@@ -234,6 +234,7 @@ def nodes(ids):
     query_nodes(cursor, 'id IN %s', (tuple(ids),))
 
     if cursor.rowcount < 1:
+        cursor.connection.rollback()
         return Response('Node %s not found.' % ids, status=404)
 
     query_ways(cursor, 'FALSE')
@@ -253,6 +254,7 @@ def ways(ids):
     query_ways(cursor, 'id IN %s', (tuple(ids),))
 
     if cursor.rowcount < 1:
+        cursor.connection.rollback()
         return Response('Way %s not found.' % ids, status=404)
 
     cursor.execute("""ANALYZE bbox_ways""")
@@ -278,6 +280,7 @@ def relations(ids):
     query_relations(cursor, 'id IN %s', (tuple(ids),))
 
     if cursor.rowcount < 1:
+        cursor.connection.rollback()
         return Response('Relation %s not found.' % ids, status=404)
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
