@@ -1,2 +1,2 @@
 flask==0.9
-SQLAlchemy==0.7.9
+psycopg2==2.4.5
