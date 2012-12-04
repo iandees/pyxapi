@@ -263,6 +263,7 @@ def parse_timestamp(osmosis_work_dir):
     return time_str
 
 @app.route("/api/capabilities")
+@app.route("/api/0.6/capabilities")
 def capabilities():
     xml = """<?xml version="1.0" encoding="UTF-8"?>
 <osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/">
