@@ -47,7 +47,7 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
                 tag_elem.setAttribute("v", v)
                 elem.appendChild(tag_elem)
 
-            yield elem.toxml('utf-8')
+            yield elem.toxml()
             yield '\n'
 
         cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
@@ -75,7 +75,7 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
                 nd_elem.setAttribute("ref", str(nd))
                 elem.appendChild(nd_elem)
 
-            yield elem.toxml('utf-8')
+            yield elem.toxml()
             yield '\n'
 
         cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
@@ -118,7 +118,7 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
                 member_elem.setAttribute("ref", str(member.get('member_id')))
                 elem.appendChild(member_elem)
 
-            yield elem.toxml('utf-8')
+            yield elem.toxml()
             yield '\n'
 
         yield '</osm>\n'
