@@ -267,6 +267,11 @@ def nodes(ids):
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
 
+@app.route('/api/0.6/nodes')
+def nodes_as_queryarg():
+    ids = request.args.get('nodes')
+    return nodes(ids)
+
 @app.route("/api/0.6/way/<string:ids>")
 def ways(ids):
     ids = ids.split(',')
@@ -291,6 +296,11 @@ def ways(ids):
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
 
+@app.route('/api/0.6/ways')
+def ways_as_queryarg():
+    ids = request.args.get('ways')
+    return ways(ids)
+
 @app.route("/api/0.6/relation/<string:ids>")
 def relations(ids):
     ids = ids.split(',')
@@ -308,6 +318,11 @@ def relations(ids):
         return Response('Relation %s not found.' % ids, status=404)
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
+
+@app.route('/api/0.6/relations')
+def relations_as_queryarg():
+    ids = request.args.get('relations')
+    return relations(ids)
 
 @app.route('/api/0.6/map')
 def map():
