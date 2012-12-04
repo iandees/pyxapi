@@ -1,3 +1,4 @@
+from xml.dom.minidom import Document
 from flask import Flask, Response, request
 import psycopg2
 import psycopg2.extras
@@ -10,8 +11,10 @@ db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xa
 psycopg2.extras.register_hstore(db)
 
 def stream_osm_data(cursor, bbox=None, timestamp=None):
+    """Streams OSM data from psql temp tables."""
     try:
-        """Streams OSM data from psql temp tables."""
+        doc = Document()
+
         yield '<?xml version="1.0" encoding="UTF-8"?>\n'
 
         osm_extra = ""
@@ -21,44 +24,59 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
         yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/"{}>\n'.format(osm_extra)
 
         if bbox:
-            yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>'.format(*bbox)
+            yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>\n'.format(*bbox)
 
         cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
 
         for row in cursor:
             tags = row.get('tags', {})
-            yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
 
-            if tags:
-                yield '>\n'
+            elem = doc.createElement('node')
+            elem.setAttribute("id", str(row.get('id')))
+            elem.setAttribute("version", str(row.get('version')))
+            elem.setAttribute("changeset", str(row.get('changeset_id')))
+            elem.setAttribute("uid", str(row.get('user_id')))
+            elem.setAttribute("visible", "true")
+            elem.setAttribute("timestamp", row.get('tstamp').isoformat())
+            elem.setAttribute("lat", str(row.get('latitude')))
+            elem.setAttribute("lon", str(row.get('longitude')))
 
-                for tag in tags.iteritems():
-                    yield '<tag k="{}" v="{}" />\n'.format(*tag)
+            for (k, v) in tags.iteritems():
+                tag_elem = doc.createElement('tag')
+                tag_elem.setAttribute("k", k)
+                tag_elem.setAttribute("v", v)
+                elem.appendChild(tag_elem)
 
-                yield "</node>\n"
-            else:
-                yield '/>\n'
-
+            yield elem.toxml('utf-8')
+            yield '\n'
 
         cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
 
         for row in cursor:
             tags = row.get('tags', {})
             nds = row.get('nodes', [])
-            yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
 
-            if tags or nds:
-                yield '>\n'
+            elem = doc.createElement('way')
+            elem.setAttribute("id", str(row.get('id')))
+            elem.setAttribute("version", str(row.get('version')))
+            elem.setAttribute("changeset", str(row.get('changeset_id')))
+            elem.setAttribute("uid", str(row.get('user_id')))
+            elem.setAttribute("visible", "true")
+            elem.setAttribute("timestamp", row.get('tstamp').isoformat())
 
-                for tag in tags.iteritems():
-                    yield '<tag k="{}" v="{}" />\n'.format(*tag)
+            for (k, v) in tags.iteritems():
+                tag_elem = doc.createElement('tag')
+                tag_elem.setAttribute("k", k)
+                tag_elem.setAttribute("v", v)
+                elem.appendChild(tag_elem)
 
-                for nd in nds:
-                    yield '<nd ref="{}" />\n'.format(nd)
+            for nd in nds:
+                nd_elem = doc.createElement('nd')
+                nd_elem.setAttribute("ref", str(nd))
+                elem.appendChild(nd_elem)
 
-                yield "</way>\n"
-            else:
-                yield '/>\n'
+            yield elem.toxml('utf-8')
+            yield '\n'
 
         cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
 
@@ -69,32 +87,39 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
                                        FROM relation_members f
                                        WHERE relation_id=%s
                                        ORDER BY sequence_id""", (row.get('id'),))
-            print relation_cursor.query
 
-            yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
+            elem = doc.createElement('relation')
+            elem.setAttribute("id", str(row.get('id')))
+            elem.setAttribute("version", str(row.get('version')))
+            elem.setAttribute("changeset", str(row.get('changeset_id')))
+            elem.setAttribute("uid", str(row.get('user_id')))
+            elem.setAttribute("visible", "true")
+            elem.setAttribute("timestamp", row.get('tstamp').isoformat())
 
-            if tags or relation_cursor.rowcount > 0:
-                yield '>\n'
+            for (k, v) in tags.iteritems():
+                tag_elem = doc.createElement('tag')
+                tag_elem.setAttribute("k", k)
+                tag_elem.setAttribute("v", v)
+                elem.appendChild(tag_elem)
 
-                for tag in tags.iteritems():
-                    yield '<tag k="{}" v="{}" />\n'.format(*tag)
+            for member in relation_cursor:
+                member_type = member.get('member_type', None)
+                if member_type == 'N':
+                    member_type = 'node'
+                elif member_type == 'W':
+                    member_type = 'way'
+                elif member_type == 'R':
+                    member_type = 'relation'
+                member['member_type'] = member_type
 
-                for member in relation_cursor:
-                    member_type = member.get('member_type', None)
-                    if member_type == 'N':
-                        member_type = 'node'
-                    elif member_type == 'W':
-                        member_type = 'way'
-                    elif member_type == 'R':
-                        member_type = 'relation'
-                    member['member_type'] = member_type
+                member_elem = doc.createElement('member')
+                member_elem.setAttribute("role", member.get('member_role'))
+                member_elem.setAttribute("type", member.get('member_type'))
+                member_elem.setAttribute("ref", str(member.get('member_id')))
+                elem.appendChild(member_elem)
 
-                    yield '<member role="{member_role}" type="{member_type}" ref="{member_id}" />\n'.format(**member)
-
-                yield "</relation>\n"
-            else:
-                yield '/>\n'
-
+            yield elem.toxml('utf-8')
+            yield '\n'
 
         yield '</osm>\n'
     finally:
