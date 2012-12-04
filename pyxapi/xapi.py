@@ -66,6 +66,38 @@ def stream_osm_data(cursor):
     # Remove the temp tables
     cursor.connection.rollback()
 
+def query_nodes(cursor, where_str, where_obj=None):
+    cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
+                        SELECT *
+                        FROM nodes
+                        WHERE %s""" % where_str, where_obj)
+
+def query_ways(cursor, where_str, where_obj=None):
+    cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS
+                        SELECT *
+                        FROM ways
+                        WHERE %s""" % where_str, where_obj)
+
+def query_relations(cursor, where_str, where_obj=None):
+    cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS
+                        SELECT *
+                        FROM relations
+                        WHERE %s""" % where_str, where_obj)
+
+def backfill_way_nodes(cursor):
+    cursor.execute("""CREATE TEMPORARY TABLE bbox_way_nodes (id bigint) ON COMMIT DROP""")
+    cursor.execute("""SELECT unnest_bbox_way_nodes()""")
+    cursor.execute("""CREATE TEMPORARY TABLE bbox_missing_way_nodes ON COMMIT DROP AS
+                SELECT buwn.id FROM (SELECT DISTINCT bwn.id FROM bbox_way_nodes bwn) buwn
+                WHERE NOT EXISTS (
+                    SELECT * FROM bbox_nodes WHERE id = buwn.id
+                );""")
+    cursor.execute("""ALTER TABLE ONLY bbox_missing_way_nodes
+                ADD CONSTRAINT pk_bbox_missing_way_nodes PRIMARY KEY (id)""")
+    cursor.execute("""ANALYZE bbox_missing_way_nodes""")
+    cursor.execute("""INSERT INTO bbox_nodes
+                SELECT n.* FROM nodes n INNER JOIN bbox_missing_way_nodes bwn ON n.id = bwn.id;""")
+
 @app.route("/api/capabilities")
 def capabilities():
     xml = """<?xml version="1.0" encoding="UTF-8"?>
@@ -84,17 +116,14 @@ def nodes(ids):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
-                        SELECT *
-                        FROM nodes
-                        WHERE id IN %s""", (tuple(ids),))
+    query_nodes(cursor, 'in IN %s', (tuple(ids),))
 
     if cursor.rowcount < 1:
         return Response('Node %s not found.' % ids, status=404)
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS SELECT * FROM nodes WHERE FALSE""")
+    query_ways(cursor, ' FALSE')
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS SELECT * FROM relations WHERE FALSE""")
+    query_relations(cursor, ' FALSE')
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
 
@@ -104,37 +133,20 @@ def ways(ids):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
-                        SELECT *
-                        FROM nodes
-                        WHERE FALSE""")
+    query_nodes(cursor, ' FALSE')
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS
-                        SELECT *
-                        FROM ways
-                        WHERE id IN %s""", (tuple(ids),))
+    query_ways(cursor, ' id IN %s', (tuple(ids),))
 
     if cursor.rowcount < 1:
         return Response('Way %s not found.' % ids, status=404)
 
     cursor.execute("""ANALYZE bbox_ways""")
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_way_nodes (id bigint) ON COMMIT DROP""")
-    cursor.execute("""SELECT unnest_bbox_way_nodes()""")
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_missing_way_nodes ON COMMIT DROP AS
-                SELECT buwn.id FROM (SELECT DISTINCT bwn.id FROM bbox_way_nodes bwn) buwn
-                WHERE NOT EXISTS (
-                    SELECT * FROM bbox_nodes WHERE id = buwn.id
-                );""")
-    cursor.execute("""ALTER TABLE ONLY bbox_missing_way_nodes
-                ADD CONSTRAINT pk_bbox_missing_way_nodes PRIMARY KEY (id)""")
-    cursor.execute("""ANALYZE bbox_missing_way_nodes""")
-    cursor.execute("""INSERT INTO bbox_nodes
-                SELECT n.* FROM nodes n INNER JOIN bbox_missing_way_nodes bwn ON n.id = bwn.id;""")
+    backfill_way_nodes(cursor)
 
     cursor.execute("""ANALYZE bbox_nodes""")
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS SELECT * FROM relations WHERE FALSE""")
+    query_relations(cursor, ' FALSE')
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
 
@@ -144,20 +156,11 @@ def relations(ids):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
-                        SELECT *
-                        FROM nodes
-                        WHERE FALSE""")
+    query_nodes(cursor, ' FALSE')
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS
-                        SELECT *
-                        FROM ways
-                        WHERE FALSE""")
+    query_ways(cursor, ' FALSE')
 
-    cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS
-                        SELECT *
-                        FROM relations
-                        WHERE id IN %s""", (tuple(ids),))
+    query_relations(cursor, ' id IN %s', (tuple(ids),))
 
     if cursor.rowcount < 1:
         return Response('Relation %s not found.' % ids, status=404)
