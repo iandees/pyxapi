@@ -9,87 +9,88 @@ db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xa
 psycopg2.extras.register_hstore(db)
 
 def stream_osm_data(cursor):
-    """Streams OSM data from psql temp tables."""
-    yield '<?xml version="1.0" encoding="UTF-8"?>\n'
-    yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/">\n'
+    try:
+        """Streams OSM data from psql temp tables."""
+        yield '<?xml version="1.0" encoding="UTF-8"?>\n'
+        yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/">\n'
 
-    cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
+        cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
 
-    for row in cursor:
-        tags = row.get('tags', {})
-        yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
+        for row in cursor:
+            tags = row.get('tags', {})
+            yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
 
-        if tags:
-            yield '>\n'
+            if tags:
+                yield '>\n'
 
-            for tag in tags.iteritems():
-                yield '<tag k="{}" v="{}" />\n'.format(*tag)
+                for tag in tags.iteritems():
+                    yield '<tag k="{}" v="{}" />\n'.format(*tag)
 
-            yield "</node>\n"
-        else:
-            yield '/>\n'
-
-
-    cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
-
-    for row in cursor:
-        tags = row.get('tags', {})
-        nds = row.get('nodes', [])
-        yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
-
-        if tags or nds:
-            yield '>\n'
-
-            for tag in tags.iteritems():
-                yield '<tag k="{}" v="{}" />\n'.format(*tag)
-
-            for nd in nds:
-                yield '<nd ref="{}" />\n'.format(nd)
-
-            yield "</way>\n"
-        else:
-            yield '/>\n'
-
-    cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
-
-    relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    for row in cursor:
-        tags = row.get('tags', {})
-        relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
-                                   FROM relation_members f
-                                   WHERE relation_id=%s
-                                   ORDER BY sequence_id""", (row.get('id'),))
-        print relation_cursor.query
-
-        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
-
-        if tags or relation_cursor.rowcount > 0:
-            yield '>\n'
-
-            for tag in tags.iteritems():
-                yield '<tag k="{}" v="{}" />\n'.format(*tag)
-
-            for member in relation_cursor:
-                member_type = member.get('member_type', None)
-                if member_type == 'N':
-                    member_type = 'node'
-                elif member_type == 'W':
-                    member_type = 'way'
-                elif member_type == 'R':
-                    member_type = 'relation'
-                member['member_type'] = member_type
-
-                yield '<member role="{member_role}" type="{member_type}" id="{member_id}" />\n'.format(**member)
-
-            yield "</relation>\n"
-        else:
-            yield '/>\n'
+                yield "</node>\n"
+            else:
+                yield '/>\n'
 
 
-    yield '</osm>\n'
+        cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
 
-    # Remove the temp tables
-    cursor.connection.rollback()
+        for row in cursor:
+            tags = row.get('tags', {})
+            nds = row.get('nodes', [])
+            yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
+
+            if tags or nds:
+                yield '>\n'
+
+                for tag in tags.iteritems():
+                    yield '<tag k="{}" v="{}" />\n'.format(*tag)
+
+                for nd in nds:
+                    yield '<nd ref="{}" />\n'.format(nd)
+
+                yield "</way>\n"
+            else:
+                yield '/>\n'
+
+        cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
+
+        relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        for row in cursor:
+            tags = row.get('tags', {})
+            relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
+                                       FROM relation_members f
+                                       WHERE relation_id=%s
+                                       ORDER BY sequence_id""", (row.get('id'),))
+            print relation_cursor.query
+
+            yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
+
+            if tags or relation_cursor.rowcount > 0:
+                yield '>\n'
+
+                for tag in tags.iteritems():
+                    yield '<tag k="{}" v="{}" />\n'.format(*tag)
+
+                for member in relation_cursor:
+                    member_type = member.get('member_type', None)
+                    if member_type == 'N':
+                        member_type = 'node'
+                    elif member_type == 'W':
+                        member_type = 'way'
+                    elif member_type == 'R':
+                        member_type = 'relation'
+                    member['member_type'] = member_type
+
+                    yield '<member role="{member_role}" type="{member_type}" id="{member_id}" />\n'.format(**member)
+
+                yield "</relation>\n"
+            else:
+                yield '/>\n'
+
+
+        yield '</osm>\n'
+    finally:
+        # Remove the temp tables
+        cursor.connection.rollback()
 
 def query_nodes(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
@@ -171,26 +172,29 @@ def parse_xapi(predicate):
             query_objs.append(int(right))
         elif left == 'bbox':
             try:
-                (left, bottom, right, top) = tuple(float(v) for v in right.split(','))
+                (l, b, r, t) = tuple(float(v) for v in right.split(','))
             except ValueError, e:
                 raise QueryError('Invalid bbox.')
 
-            if left > right:
+            if l > r:
                 raise QueryError('Left > Right.')
-            if bottom > top:
+            if b > t:
                 raise QueryError('Bottom > Top.')
-            if bottom < -90 or bottom > 90:
+            if b < -90 or b > 90:
                 raise QueryError('Bottom is out of range.')
-            if top < -90 or top > 90:
+            if t < -90 or t > 90:
                 raise QueryError('Top is out of range.')
-            if left < -180 or left > 180:
+            if l < -180 or l > 180:
                 raise QueryError('Left is out of range.')
-            if right < -180 or right > 180:
+            if r < -180 or r > 180:
                 raise QueryError('Right is out of range.')
 
-            (left, bottom, right, top) = tuple(float(v) for v in right.split(','))
             query.append('ST_Intersects(geom, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))')
-            query_objs.extend([left, bottom, left, top, right, top, right, bottom, left, bottom])
+            query_objs.extend([l, b,
+                               l, t,
+                               r, t,
+                               r, b,
+                               l, b])
         else:
             ors = []
             orvs = []
@@ -289,10 +293,10 @@ def map():
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, 'ST_Intersects(geom, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))', (left, bottom, left, top, right, top, right, bottom, left, bottom))
+    query_nodes(cursor, query_str, query_objs)
     cursor.execute("""ALTER TABLE ONLY bbox_nodes ADD CONSTRAINT pk_bbox_nodes PRIMARY KEY (id)""")
 
-    query_ways(cursor, 'ST_Intersects(linestring, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))', (left, bottom, left, top, right, top, right, bottom, left, bottom))
+    query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
     cursor.execute("""ALTER TABLE ONLY bbox_ways ADD CONSTRAINT pk_bbox_ways PRIMARY KEY (id)""")
 
     backfill_relations(cursor)
