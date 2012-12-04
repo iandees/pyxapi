@@ -357,6 +357,8 @@ def map():
         (query_str, query_objs) = parse_xapi('[bbox=%s]' % bbox)
     except QueryError, e:
         return Response(e.message, status=400)
+    except ValueError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -382,6 +384,8 @@ def search_nodes(predicate):
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
         return Response(e.message, status=400)
+    except ValueError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -398,6 +402,8 @@ def search_ways(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
+        return Response(e.message, status=400)
+    except ValueError, e:
         return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -417,6 +423,8 @@ def search_relations(predicate):
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
         return Response(e.message, status=400)
+    except ValueError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -427,6 +435,8 @@ def search_primitives(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
+        return Response(e.message, status=400)
+    except ValueError, e:
         return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
