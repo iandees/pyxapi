@@ -319,7 +319,7 @@ def search_ways(predicate):
 
     query_nodes(cursor, 'FALSE')
 
-    query_ways(cursor, query_str, query_objs)
+    query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
     backfill_way_nodes(cursor)
 
     query_relations(cursor, 'FALSE')
@@ -342,7 +342,7 @@ def search_primitives(predicate):
 
     query_nodes(cursor, query_str, query_objs)
 
-    query_ways(cursor, query_str, query_objs)
+    query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
     backfill_way_nodes(cursor)
 
     query_relations(cursor, 'FALSE')
