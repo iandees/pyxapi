@@ -21,7 +21,7 @@ def stream_osm_data(cursor):
             yield '>\n'
 
             for tag in tags.iteritems():
-                yield "<tag k='{}' v='{}'/>\n".format(*tag).encode('utf-8')
+                yield '<tag k="{}" v="{}" />\n'.format(*tag).encode('utf-8')
 
             yield "</node>\n"
         else:
@@ -32,13 +32,17 @@ def stream_osm_data(cursor):
 
     for row in cursor:
         tags = row.get('tags', {})
+        nds = row.get('nodes', [])
         yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
 
-        if tags:
+        if tags or nds:
             yield '>\n'
 
             for tag in tags.iteritems():
-                yield "<tag k='{}' v='{}'/>\n".format(*tag).encode('utf-8')
+                yield '<tag k="{}" v="{}" />\n'.format(*tag).encode('utf-8')
+
+            for nd in nds:
+                yield '<nd ref="{}" />\n'.format(nd)
 
             yield "</way>\n"
         else:
@@ -46,19 +50,39 @@ def stream_osm_data(cursor):
 
     cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
 
+    relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
     for row in cursor:
         tags = row.get('tags', {})
-        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}">\n'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
+        relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
+                                   FROM relation_members f
+                                   WHERE relation_id=%s
+                                   ORDER BY sequence_id""", (row.get('id'),))
+        print relation_cursor.query
 
-        if tags:
+        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
+
+        if tags or relation_cursor.rowcount > 0:
             yield '>\n'
+
+            for tag in tags.iteritems():
+                yield '<tag k="{}" v="{}" />\n'.format(*tag).encode('utf-8')
+
+            for member in relation_cursor:
+                member_type = member.get('member_type', None)
+                if member_type == 'N':
+                    member_type = 'node'
+                elif member_type == 'W':
+                    member_type = 'way'
+                elif member_type == 'R':
+                    member_type = 'relation'
+                member['member_type'] = member_type
+
+                yield '<member role="{member_role}" type="{member_type}" id="{member_id}" />\n'.format(**member)
+
+            yield "</relation>\n"
         else:
             yield '/>\n'
 
-        for tag in tags.iteritems():
-            yield "<tag k='{}' v='{}'/>\n".format(*tag).encode('utf-8')
-
-        yield "</relation>\n"
 
     yield '</osm>\n'
 
@@ -202,7 +226,7 @@ def map():
     bbox = request.args.get('bbox')
 
     try:
-        (bottom, left, top, right) = tuple(float(v) for v in bbox.split(','))
+        (left, bottom, right, top) = tuple(float(v) for v in bbox.split(','))
     except ValueError, e:
         return Response('Invalid bbox.', status=400)
 
