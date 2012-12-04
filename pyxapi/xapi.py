@@ -1,6 +1,8 @@
 from flask import Flask, Response, request
 import psycopg2
 import psycopg2.extras
+import re
+import itertools
 
 app = Flask(__name__)
 db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
@@ -15,13 +17,13 @@ def stream_osm_data(cursor):
 
     for row in cursor:
         tags = row.get('tags', {})
-        yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
+        yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
 
         if tags:
             yield '>\n'
 
             for tag in tags.iteritems():
-                yield '<tag k="{}" v="{}" />\n'.format(*tag).encode('utf-8')
+                yield '<tag k="{}" v="{}" />\n'.format(*tag)
 
             yield "</node>\n"
         else:
@@ -33,13 +35,13 @@ def stream_osm_data(cursor):
     for row in cursor:
         tags = row.get('tags', {})
         nds = row.get('nodes', [])
-        yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
+        yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
 
         if tags or nds:
             yield '>\n'
 
             for tag in tags.iteritems():
-                yield '<tag k="{}" v="{}" />\n'.format(*tag).encode('utf-8')
+                yield '<tag k="{}" v="{}" />\n'.format(*tag)
 
             for nd in nds:
                 yield '<nd ref="{}" />\n'.format(nd)
@@ -59,13 +61,13 @@ def stream_osm_data(cursor):
                                    ORDER BY sequence_id""", (row.get('id'),))
         print relation_cursor.query
 
-        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
+        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
 
         if tags or relation_cursor.rowcount > 0:
             yield '>\n'
 
             for tag in tags.iteritems():
-                yield '<tag k="{}" v="{}" />\n'.format(*tag).encode('utf-8')
+                yield '<tag k="{}" v="{}" />\n'.format(*tag)
 
             for member in relation_cursor:
                 member_type = member.get('member_type', None)
@@ -151,6 +153,40 @@ def backfill_parent_relations(cursor):
         print cursor.query
         if cursor.rowcount == 0:
             break
+
+def parse_xapi(predicate):
+    query = []
+    query_objs = []
+    groups = re.findall(r'(?:\[(.*?)\])', predicate)
+    for g in groups:
+        (left, right) = g.split('=')
+        if left == '@uid':
+            query.append('uid = %s')
+            query_objs.append(int(right))
+        elif left == '@changeset':
+            query.append('changeset_id = %s')
+            query_objs.append(int(right))
+        elif left == 'bbox':
+            (left, bottom, right, top) = tuple(float(v) for v in right.split(','))
+            query.append('ST_Intersects(geom, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))')
+            query_objs.extend([left, bottom, left, top, right, top, right, bottom, left, bottom])
+        else:
+            ors = []
+            orvs = []
+            keys = left.split('|')
+            vals = right.split('|')
+            for (l,r) in itertools.product(keys, vals):
+                if r == '*':
+                    ors.append('(tags ? %s)')
+                    orvs.append(l)
+                else:
+                    ors.append('(tags @> hstore(%s, %s))')
+                    orvs.append(l)
+                    orvs.append(r)
+            query.append('(' + ' OR '.join(ors) + ')')
+            query_objs.extend(orvs)
+    query_str = ' AND '.join(query)
+    return (query_str, query_objs)
 
 @app.route("/api/capabilities")
 def capabilities():
@@ -258,6 +294,58 @@ def map():
     cursor.execute("""ANALYZE bbox_nodes""")
     cursor.execute("""ANALYZE bbox_ways""")
     cursor.execute("""ANALYZE bbox_relations""")
+
+    return Response(stream_osm_data(cursor), mimetype='text/xml')
+
+@app.route('/api/0.6/node<string:predicate>')
+def search_nodes(predicate):
+    (query_str, query_objs) = parse_xapi(predicate)
+
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    query_nodes(cursor, query_str, query_objs)
+
+    query_ways(cursor, 'FALSE')
+
+    query_relations(cursor, 'FALSE')
+
+    return Response(stream_osm_data(cursor), mimetype='text/xml')
+
+@app.route('/api/0.6/way<string:predicate>')
+def search_ways(predicate):
+    (query_str, query_objs) = parse_xapi(predicate)
+
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    query_nodes(cursor, 'FALSE')
+
+    query_ways(cursor, query_str, query_objs)
+    backfill_way_nodes(cursor)
+
+    query_relations(cursor, 'FALSE')
+
+    return Response(stream_osm_data(cursor), mimetype='text/xml')
+
+@app.route('/api/0.6/relation<string:predicate>')
+def search_relations(predicate):
+    (query_str, query_objs) = parse_xapi(predicate)
+
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    return Response(stream_osm_data(cursor), mimetype='text/xml')
+
+@app.route('/api/0.6/*<string:predicate>')
+def search_primitives(predicate):
+    (query_str, query_objs) = parse_xapi(predicate)
+
+    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    query_nodes(cursor, query_str, query_objs)
+
+    query_ways(cursor, query_str, query_objs)
+    backfill_way_nodes(cursor)
+
+    query_relations(cursor, 'FALSE')
 
     return Response(stream_osm_data(cursor), mimetype='text/xml')
 
