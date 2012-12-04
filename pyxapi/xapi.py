@@ -5,14 +5,23 @@ import re
 import itertools
 
 app = Flask(__name__)
+osmosis_work_dir = '/Users/iandees/.osmosis'
 db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
 psycopg2.extras.register_hstore(db)
 
-def stream_osm_data(cursor):
+def stream_osm_data(cursor, bbox=None, timestamp=None):
     try:
         """Streams OSM data from psql temp tables."""
         yield '<?xml version="1.0" encoding="UTF-8"?>\n'
-        yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/">\n'
+
+        osm_extra = ""
+        if timestamp:
+            osm_extra = ' xmlns:xapi="http://jxapi.openstreetmap.org/" xapi:timestamp="{}"'.format(timestamp)
+
+        yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/"{}>\n'.format(osm_extra)
+
+        if bbox:
+            yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>'.format(*bbox)
 
         cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
 
@@ -80,7 +89,7 @@ def stream_osm_data(cursor):
                         member_type = 'relation'
                     member['member_type'] = member_type
 
-                    yield '<member role="{member_role}" type="{member_type}" id="{member_id}" />\n'.format(**member)
+                    yield '<member role="{member_role}" type="{member_type}" ref="{member_id}" />\n'.format(**member)
 
                 yield "</relation>\n"
             else:
@@ -172,7 +181,7 @@ def parse_xapi(predicate):
             query_objs.append(int(right))
         elif left == 'bbox':
             try:
-                (l, b, r, t) = tuple(float(v) for v in right.split(','))
+                (l, b, r, t) = parse_bbox(right)
             except ValueError, e:
                 raise QueryError('Invalid bbox.')
 
@@ -212,6 +221,21 @@ def parse_xapi(predicate):
             query_objs.extend(orvs)
     query_str = ' AND '.join(query)
     return (query_str, query_objs)
+
+def parse_bbox(bbox_str):
+    return tuple(float(v) for v in bbox_str.split(','))
+
+def parse_timestamp(osmosis_work_dir):
+    f = open('{}/state.txt'.format(osmosis_work_dir), 'r')
+
+    time_str = None
+    for line in f:
+        if line.startswith('timestamp='):
+            time_str = line[10:].replace('\\', '').strip()
+
+    f.close()
+
+    return time_str
 
 @app.route("/api/capabilities")
 def capabilities():
@@ -310,7 +334,7 @@ def map():
     cursor.execute("""ANALYZE bbox_ways""")
     cursor.execute("""ANALYZE bbox_relations""")
 
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
+    return Response(stream_osm_data(cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
 
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
