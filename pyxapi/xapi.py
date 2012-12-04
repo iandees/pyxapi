@@ -15,13 +15,14 @@ def stream_osm_data(cursor):
 
     for row in cursor:
         tags = row.get('tags', {})
-        yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
+        yield '<node id="{id}" version="{version}" changeset="{changeset_id}" lat="{latitude}" lon="{longitude}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
 
         if tags:
             yield '>\n'
 
-            for (k,v) in tags.iteritems():
-                yield "<tag k='%s' v='%s'/>\n" % (k, v)
+            for tag in tags.iteritems():
+                print tag
+                yield "<tag k='{}' v='{}'/>\n".format(*tag).encode('utf-8')
 
             yield "</node>\n"
         else:
@@ -32,13 +33,13 @@ def stream_osm_data(cursor):
 
     for row in cursor:
         tags = row.get('tags', {})
-        yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row)
+        yield '<way id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}"'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
 
         if tags:
             yield '>\n'
 
-            for (k,v) in tags.iteritems():
-                yield "<tag k='%s' v='%s'/>\n" % (k, v)
+            for tag in tags.iteritems():
+                yield "<tag k='{}' v='{}'/>\n".format(*tag).encode('utf-8')
 
             yield "</way>\n"
         else:
@@ -48,15 +49,15 @@ def stream_osm_data(cursor):
 
     for row in cursor:
         tags = row.get('tags', {})
-        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}">\n'.format(timestamp=row.get('tstamp').isoformat(), **row)
+        yield '<relation id="{id}" version="{version}" changeset="{changeset_id}" uid="{user_id}" visible="true" timestamp="{timestamp}">\n'.format(timestamp=row.get('tstamp').isoformat(), **row).encode('utf-8')
 
         if tags:
             yield '>\n'
         else:
             yield '/>\n'
 
-        for (k,v) in tags.iteritems():
-            yield "<tag k='%s' v='%s'/>\n" % (k, v)
+        for tag in tags.iteritems():
+            yield "<tag k='{}' v='{}'/>\n".format(*tag).encode('utf-8')
 
         yield "</relation>\n"
 
