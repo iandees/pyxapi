@@ -154,6 +154,9 @@ def backfill_parent_relations(cursor):
         if cursor.rowcount == 0:
             break
 
+class QueryError(Exception):
+    pass
+
 def parse_xapi(predicate):
     query = []
     query_objs = []
@@ -167,6 +170,24 @@ def parse_xapi(predicate):
             query.append('changeset_id = %s')
             query_objs.append(int(right))
         elif left == 'bbox':
+            try:
+                (left, bottom, right, top) = tuple(float(v) for v in right.split(','))
+            except ValueError, e:
+                raise QueryError('Invalid bbox.')
+
+            if left > right:
+                raise QueryError('Left > Right.')
+            if bottom > top:
+                raise QueryError('Bottom > Top.')
+            if bottom < -90 or bottom > 90:
+                raise QueryError('Bottom is out of range.')
+            if top < -90 or top > 90:
+                raise QueryError('Top is out of range.')
+            if left < -180 or left > 180:
+                raise QueryError('Left is out of range.')
+            if right < -180 or right > 180:
+                raise QueryError('Right is out of range.')
+
             (left, bottom, right, top) = tuple(float(v) for v in right.split(','))
             query.append('ST_Intersects(geom, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))')
             query_objs.extend([left, bottom, left, top, right, top, right, bottom, left, bottom])
@@ -262,22 +283,9 @@ def map():
     bbox = request.args.get('bbox')
 
     try:
-        (left, bottom, right, top) = tuple(float(v) for v in bbox.split(','))
-    except ValueError, e:
-        return Response('Invalid bbox.', status=400)
-
-    if left > right:
-        return Response('Left > Right.', status=400)
-    if bottom > top:
-        return Response('Bottom > Top.', status=400)
-    if bottom < -90 or bottom > 90:
-        return Response('Bottom is out of range.', status=400)
-    if top < -90 or top > 90:
-        return Response('Top is out of range.', status=400)
-    if left < -180 or left > 180:
-        return Response('Left is out of range.', status=400)
-    if right < -180 or right > 180:
-        return Response('Right is out of range.', status=400)
+        (query_str, query_objs) = parse_xapi('[bbox=%s]' % bbox)
+    except QueryError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -299,7 +307,10 @@ def map():
 
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
-    (query_str, query_objs) = parse_xapi(predicate)
+    try:
+        (query_str, query_objs) = parse_xapi(predicate)
+    except QueryError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -313,7 +324,10 @@ def search_nodes(predicate):
 
 @app.route('/api/0.6/way<string:predicate>')
 def search_ways(predicate):
-    (query_str, query_objs) = parse_xapi(predicate)
+    try:
+        (query_str, query_objs) = parse_xapi(predicate)
+    except QueryError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -328,7 +342,10 @@ def search_ways(predicate):
 
 @app.route('/api/0.6/relation<string:predicate>')
 def search_relations(predicate):
-    (query_str, query_objs) = parse_xapi(predicate)
+    try:
+        (query_str, query_objs) = parse_xapi(predicate)
+    except QueryError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -336,7 +353,10 @@ def search_relations(predicate):
 
 @app.route('/api/0.6/*<string:predicate>')
 def search_primitives(predicate):
-    (query_str, query_objs) = parse_xapi(predicate)
+    try:
+        (query_str, query_objs) = parse_xapi(predicate)
+    except QueryError, e:
+        return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
