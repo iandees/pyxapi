@@ -263,7 +263,13 @@ def capabilities():
 
 @app.route("/api/0.6/node/<string:ids>")
 def nodes(ids):
-    ids = ids.split(',')
+    try:
+        ids = [int(i) for i in ids.split(',')]
+    except ValueError, e:
+        return Response(e.message, status=400)
+
+    if not ids:
+        return Response('No IDs specified.', status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -281,12 +287,18 @@ def nodes(ids):
 
 @app.route('/api/0.6/nodes')
 def nodes_as_queryarg():
-    ids = request.args.get('nodes')
+    ids = request.args.get('nodes', '')
     return nodes(ids)
 
 @app.route("/api/0.6/way/<string:ids>")
 def ways(ids):
-    ids = ids.split(',')
+    try:
+        ids = [int(i) for i in ids.split(',')]
+    except ValueError, e:
+        return Response(e.message, status=400)
+
+    if not ids:
+        return Response('No IDs specified.', status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -310,12 +322,18 @@ def ways(ids):
 
 @app.route('/api/0.6/ways')
 def ways_as_queryarg():
-    ids = request.args.get('ways')
+    ids = request.args.get('ways', '')
     return ways(ids)
 
 @app.route("/api/0.6/relation/<string:ids>")
 def relations(ids):
-    ids = ids.split(',')
+    try:
+        ids = [int(i) for i in ids.split(',')]
+    except ValueError, e:
+        return Response(e.message, status=400)
+
+    if not ids:
+        return Response('No IDs specified.', status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -333,12 +351,15 @@ def relations(ids):
 
 @app.route('/api/0.6/relations')
 def relations_as_queryarg():
-    ids = request.args.get('relations')
+    ids = request.args.get('relations', '')
     return relations(ids)
 
 @app.route('/api/0.6/map')
 def map():
     bbox = request.args.get('bbox')
+
+    if not bbox:
+        return Response('No bbox specified.', status=400)
 
     try:
         (query_str, query_objs) = parse_xapi('[bbox=%s]' % bbox)
