@@ -251,14 +251,20 @@ def parse_timestamp(osmosis_work_dir):
 @app.route("/api/capabilities")
 @app.route("/api/0.6/capabilities")
 def capabilities():
+    ts = parse_timestamp(osmosis_work_dir)
+    if ts:
+        timestamp = ' xmlns:xapi="http://jxapi.openstreetmap.org/" xapi:timestamp="{}"'.format(ts)
+    else:
+        timestamp = ''
+
     xml = """<?xml version="1.0" encoding="UTF-8"?>
-<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/">
+<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/"{}>
   <api>
     <version minimum="0.6" maximum="0.6"/>
     <area maximum="0.25"/>
     <timeout seconds="300"/>
   </api>
-</osm>"""
+</osm>""".format(timestamp)
     return Response(xml, mimetype='text/xml')
 
 @app.route("/api/0.6/node/<string:ids>")
