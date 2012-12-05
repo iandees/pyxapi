@@ -10,6 +10,21 @@ osmosis_work_dir = '/Users/iandees/.osmosis'
 db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
 psycopg2.extras.register_hstore(db)
 
+def write_primitive_attributes(element, primitive):
+    element.setAttribute("id", str(primitive.get('id')))
+    element.setAttribute("version", str(primitive.get('version')))
+    element.setAttribute("changeset", str(primitive.get('changeset_id')))
+    element.setAttribute("uid", str(primitive.get('user_id')))
+    element.setAttribute("visible", "true")
+    element.setAttribute("timestamp", primitive.get('tstamp').isoformat())
+
+def write_tags(doc, parent_element, primitive):
+    for (k, v) in primitive.get('tags', {}).iteritems():
+        tag_elem = doc.createElement('tag')
+        tag_elem.setAttribute("k", k)
+        tag_elem.setAttribute("v", v)
+        parent_element.appendChild(tag_elem)
+
 def stream_osm_data(cursor, bbox=None, timestamp=None):
     """Streams OSM data from psql temp tables."""
     try:
@@ -29,23 +44,12 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
         cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
 
         for row in cursor:
-            tags = row.get('tags', {})
-
             elem = doc.createElement('node')
-            elem.setAttribute("id", str(row.get('id')))
-            elem.setAttribute("version", str(row.get('version')))
-            elem.setAttribute("changeset", str(row.get('changeset_id')))
-            elem.setAttribute("uid", str(row.get('user_id')))
-            elem.setAttribute("visible", "true")
-            elem.setAttribute("timestamp", row.get('tstamp').isoformat())
+            write_primitive_attributes(elem, row)
             elem.setAttribute("lat", str(row.get('latitude')))
             elem.setAttribute("lon", str(row.get('longitude')))
 
-            for (k, v) in tags.iteritems():
-                tag_elem = doc.createElement('tag')
-                tag_elem.setAttribute("k", k)
-                tag_elem.setAttribute("v", v)
-                elem.appendChild(tag_elem)
+            write_tags(doc, elem, row)
 
             yield elem.toxml()
             yield '\n'
@@ -57,18 +61,9 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
             nds = row.get('nodes', [])
 
             elem = doc.createElement('way')
-            elem.setAttribute("id", str(row.get('id')))
-            elem.setAttribute("version", str(row.get('version')))
-            elem.setAttribute("changeset", str(row.get('changeset_id')))
-            elem.setAttribute("uid", str(row.get('user_id')))
-            elem.setAttribute("visible", "true")
-            elem.setAttribute("timestamp", row.get('tstamp').isoformat())
+            write_primitive_attributes(elem, row)
 
-            for (k, v) in tags.iteritems():
-                tag_elem = doc.createElement('tag')
-                tag_elem.setAttribute("k", k)
-                tag_elem.setAttribute("v", v)
-                elem.appendChild(tag_elem)
+            write_tags(doc, elem, row)
 
             for nd in nds:
                 nd_elem = doc.createElement('nd')
@@ -89,18 +84,9 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
                                        ORDER BY sequence_id""", (row.get('id'),))
 
             elem = doc.createElement('relation')
-            elem.setAttribute("id", str(row.get('id')))
-            elem.setAttribute("version", str(row.get('version')))
-            elem.setAttribute("changeset", str(row.get('changeset_id')))
-            elem.setAttribute("uid", str(row.get('user_id')))
-            elem.setAttribute("visible", "true")
-            elem.setAttribute("timestamp", row.get('tstamp').isoformat())
+            write_primitive_attributes(elem, row)
 
-            for (k, v) in tags.iteritems():
-                tag_elem = doc.createElement('tag')
-                tag_elem.setAttribute("k", k)
-                tag_elem.setAttribute("v", v)
-                elem.appendChild(tag_elem)
+            write_tags(doc, elem, row)
 
             for member in relation_cursor:
                 member_type = member.get('member_type', None)
