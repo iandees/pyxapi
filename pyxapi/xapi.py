@@ -28,90 +28,86 @@ def write_tags(doc, parent_element, primitive):
 
 def stream_osm_data(cursor, bbox=None, timestamp=None):
     """Streams OSM data from psql temp tables."""
-    try:
-        doc = Document()
+    doc = Document()
 
-        yield '<?xml version="1.0" encoding="UTF-8"?>\n'
+    yield '<?xml version="1.0" encoding="UTF-8"?>\n'
 
-        osm_extra = ""
-        if timestamp:
-            osm_extra = ' xmlns:xapi="http://jxapi.openstreetmap.org/" xapi:timestamp="{}"'.format(timestamp)
+    osm_extra = ""
+    if timestamp:
+        osm_extra = ' xmlns:xapi="http://jxapi.openstreetmap.org/" xapi:timestamp="{}"'.format(timestamp)
 
-        yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/"{}>\n'.format(osm_extra)
+    yield '<osm version="0.6" generator="pyxapi" copyright="OpenStreetMap and contributors" attribution="http://www.openstreetmap.org/copyright" license="http://opendatacommons.org/licenses/odbl/1-0/"{}>\n'.format(osm_extra)
 
-        if bbox:
-            yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>\n'.format(*bbox)
+    if bbox:
+        yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>\n'.format(*bbox)
 
-        cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
+    cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
 
-        for row in cursor:
-            elem = doc.createElement('node')
-            write_primitive_attributes(elem, row)
-            elem.setAttribute("lat", str(row.get('latitude')))
-            elem.setAttribute("lon", str(row.get('longitude')))
+    for row in cursor:
+        elem = doc.createElement('node')
+        write_primitive_attributes(elem, row)
+        elem.setAttribute("lat", str(row.get('latitude')))
+        elem.setAttribute("lon", str(row.get('longitude')))
 
-            write_tags(doc, elem, row)
+        write_tags(doc, elem, row)
 
-            yield elem.toxml()
-            yield '\n'
+        yield elem.toxml()
+        yield '\n'
 
-        cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
+    cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
 
-        for row in cursor:
-            tags = row.get('tags', {})
-            nds = row.get('nodes', [])
+    for row in cursor:
+        tags = row.get('tags', {})
+        nds = row.get('nodes', [])
 
-            elem = doc.createElement('way')
-            write_primitive_attributes(elem, row)
+        elem = doc.createElement('way')
+        write_primitive_attributes(elem, row)
 
-            write_tags(doc, elem, row)
+        write_tags(doc, elem, row)
 
-            for nd in nds:
-                nd_elem = doc.createElement('nd')
-                nd_elem.setAttribute("ref", str(nd))
-                elem.appendChild(nd_elem)
+        for nd in nds:
+            nd_elem = doc.createElement('nd')
+            nd_elem.setAttribute("ref", str(nd))
+            elem.appendChild(nd_elem)
 
-            yield elem.toxml()
-            yield '\n'
+        yield elem.toxml()
+        yield '\n'
 
-        cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
+    cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
 
-        relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        for row in cursor:
-            tags = row.get('tags', {})
-            relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
-                                       FROM relation_members f
-                                       WHERE relation_id=%s
-                                       ORDER BY sequence_id""", (row.get('id'),))
+    relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    for row in cursor:
+        tags = row.get('tags', {})
+        relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
+                                   FROM relation_members f
+                                   WHERE relation_id=%s
+                                   ORDER BY sequence_id""", (row.get('id'),))
 
-            elem = doc.createElement('relation')
-            write_primitive_attributes(elem, row)
+        elem = doc.createElement('relation')
+        write_primitive_attributes(elem, row)
 
-            write_tags(doc, elem, row)
+        write_tags(doc, elem, row)
 
-            for member in relation_cursor:
-                member_type = member.get('member_type', None)
-                if member_type == 'N':
-                    member_type = 'node'
-                elif member_type == 'W':
-                    member_type = 'way'
-                elif member_type == 'R':
-                    member_type = 'relation'
-                member['member_type'] = member_type
+        for member in relation_cursor:
+            member_type = member.get('member_type', None)
+            if member_type == 'N':
+                member_type = 'node'
+            elif member_type == 'W':
+                member_type = 'way'
+            elif member_type == 'R':
+                member_type = 'relation'
+            member['member_type'] = member_type
 
-                member_elem = doc.createElement('member')
-                member_elem.setAttribute("role", member.get('member_role'))
-                member_elem.setAttribute("type", member.get('member_type'))
-                member_elem.setAttribute("ref", str(member.get('member_id')))
-                elem.appendChild(member_elem)
+            member_elem = doc.createElement('member')
+            member_elem.setAttribute("role", member.get('member_role'))
+            member_elem.setAttribute("type", member.get('member_type'))
+            member_elem.setAttribute("ref", str(member.get('member_id')))
+            elem.appendChild(member_elem)
 
-            yield elem.toxml()
-            yield '\n'
+        yield elem.toxml()
+        yield '\n'
 
-        yield '</osm>\n'
-    finally:
-        # Remove the temp tables
-        cursor.connection.rollback()
+    yield '</osm>\n'
 
 def query_nodes(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
@@ -280,17 +276,20 @@ def nodes(ids):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, 'id IN %s', (tuple(ids),))
+    try:
+        query_nodes(cursor, 'id IN %s', (tuple(ids),))
 
-    if cursor.rowcount < 1:
+        if cursor.rowcount < 1:
+            cursor.connection.rollback()
+            return Response('Node %s not found.' % ids, status=404)
+
+        query_ways(cursor, 'FALSE')
+
+        query_relations(cursor, 'FALSE')
+
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
         cursor.connection.rollback()
-        return Response('Node %s not found.' % ids, status=404)
-
-    query_ways(cursor, 'FALSE')
-
-    query_relations(cursor, 'FALSE')
-
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/nodes')
 def nodes_as_queryarg():
@@ -309,23 +308,26 @@ def ways(ids):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, 'FALSE')
+    try:
+        query_nodes(cursor, 'FALSE')
 
-    query_ways(cursor, 'id IN %s', (tuple(ids),))
+        query_ways(cursor, 'id IN %s', (tuple(ids),))
 
-    if cursor.rowcount < 1:
+        if cursor.rowcount < 1:
+            cursor.connection.rollback()
+            return Response('Way %s not found.' % ids, status=404)
+
+        cursor.execute("""ANALYZE bbox_ways""")
+
+        backfill_way_nodes(cursor)
+
+        cursor.execute("""ANALYZE bbox_nodes""")
+
+        query_relations(cursor, 'FALSE')
+
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
         cursor.connection.rollback()
-        return Response('Way %s not found.' % ids, status=404)
-
-    cursor.execute("""ANALYZE bbox_ways""")
-
-    backfill_way_nodes(cursor)
-
-    cursor.execute("""ANALYZE bbox_nodes""")
-
-    query_relations(cursor, 'FALSE')
-
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/ways')
 def ways_as_queryarg():
@@ -344,17 +346,20 @@ def relations(ids):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, 'FALSE')
+    try:
+        query_nodes(cursor, 'FALSE')
 
-    query_ways(cursor, 'FALSE')
+        query_ways(cursor, 'FALSE')
 
-    query_relations(cursor, 'id IN %s', (tuple(ids),))
+        query_relations(cursor, 'id IN %s', (tuple(ids),))
 
-    if cursor.rowcount < 1:
+        if cursor.rowcount < 1:
+            cursor.connection.rollback()
+            return Response('Relation %s not found.' % ids, status=404)
+
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
         cursor.connection.rollback()
-        return Response('Relation %s not found.' % ids, status=404)
-
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/relations')
 def relations_as_queryarg():
@@ -377,21 +382,24 @@ def map():
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, query_str, query_objs)
-    cursor.execute("""ALTER TABLE ONLY bbox_nodes ADD CONSTRAINT pk_bbox_nodes PRIMARY KEY (id)""")
+    try:
+        query_nodes(cursor, query_str, query_objs)
+        cursor.execute("""ALTER TABLE ONLY bbox_nodes ADD CONSTRAINT pk_bbox_nodes PRIMARY KEY (id)""")
 
-    query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
-    cursor.execute("""ALTER TABLE ONLY bbox_ways ADD CONSTRAINT pk_bbox_ways PRIMARY KEY (id)""")
+        query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
+        cursor.execute("""ALTER TABLE ONLY bbox_ways ADD CONSTRAINT pk_bbox_ways PRIMARY KEY (id)""")
 
-    backfill_relations(cursor)
-    backfill_parent_relations(cursor)
-    backfill_way_nodes(cursor)
+        backfill_relations(cursor)
+        backfill_parent_relations(cursor)
+        backfill_way_nodes(cursor)
 
-    cursor.execute("""ANALYZE bbox_nodes""")
-    cursor.execute("""ANALYZE bbox_ways""")
-    cursor.execute("""ANALYZE bbox_relations""")
+        cursor.execute("""ANALYZE bbox_nodes""")
+        cursor.execute("""ANALYZE bbox_ways""")
+        cursor.execute("""ANALYZE bbox_relations""")
 
-    return Response(stream_osm_data(cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
+        return Response(stream_osm_data(cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
+    finally:
+        cursor.connection.rollback()
 
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
@@ -404,13 +412,16 @@ def search_nodes(predicate):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, query_str, query_objs)
+    try:
+        query_nodes(cursor, query_str, query_objs)
 
-    query_ways(cursor, 'FALSE')
+        query_ways(cursor, 'FALSE')
 
-    query_relations(cursor, 'FALSE')
+        query_relations(cursor, 'FALSE')
 
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
+        cursor.connection.rollback()
 
 @app.route('/api/0.6/way<string:predicate>')
 def search_ways(predicate):
@@ -423,14 +434,17 @@ def search_ways(predicate):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, 'FALSE')
+    try:
+        query_nodes(cursor, 'FALSE')
 
-    query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
-    backfill_way_nodes(cursor)
+        query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
+        backfill_way_nodes(cursor)
 
-    query_relations(cursor, 'FALSE')
+        query_relations(cursor, 'FALSE')
 
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
+        cursor.connection.rollback()
 
 @app.route('/api/0.6/relation<string:predicate>')
 def search_relations(predicate):
@@ -442,8 +456,11 @@ def search_relations(predicate):
         return Response(e.message, status=400)
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
 
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
+        cursor.connection.rollback()
 
 @app.route('/api/0.6/*<string:predicate>')
 def search_primitives(predicate):
@@ -456,14 +473,17 @@ def search_primitives(predicate):
 
     cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query_nodes(cursor, query_str, query_objs)
+    try:
+        query_nodes(cursor, query_str, query_objs)
 
-    query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
-    backfill_way_nodes(cursor)
+        query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
+        backfill_way_nodes(cursor)
 
-    query_relations(cursor, 'FALSE')
+        query_relations(cursor, 'FALSE')
 
-    return Response(stream_osm_data(cursor), mimetype='text/xml')
+        return Response(stream_osm_data(cursor), mimetype='text/xml')
+    finally:
+        cursor.connection.rollback()
 
 if __name__ == "__main__":
     app.run()
