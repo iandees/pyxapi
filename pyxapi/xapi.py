@@ -4,6 +4,7 @@ import psycopg2
 import psycopg2.extras
 import re
 import itertools
+import logging
 
 app = Flask(__name__)
 osmosis_work_dir = '/Users/iandees/.osmosis'
@@ -117,21 +118,21 @@ def query_nodes(cursor, where_str, where_obj=None):
                         SELECT *
                         FROM nodes
                         WHERE %s""" % where_str, where_obj)
-    print cursor.query
+    logging.debug(cursor.query)
 
 def query_ways(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS
                         SELECT *
                         FROM ways
                         WHERE %s""" % where_str, where_obj)
-    print cursor.query
+    logging.debug(cursor.query)
 
 def query_relations(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS
                         SELECT *
                         FROM relations
                         WHERE %s""" % where_str, where_obj)
-    print cursor.query
+    logging.debug(cursor.query)
 
 def backfill_way_nodes(cursor):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_way_nodes (id bigint) ON COMMIT DROP""")
@@ -159,7 +160,7 @@ def backfill_relations(cursor):
                             INNER JOIN bbox_ways w ON rm.member_id = w.id WHERE rm.member_type = 'W'
                          ) rids GROUP BY relation_id
                     ) rids ON r.id = rids.relation_id""")
-    print cursor.query
+    logging.debug(cursor.query)
 
 def backfill_parent_relations(cursor):
     while True:
@@ -171,7 +172,7 @@ def backfill_parent_relations(cursor):
                             SELECT * FROM bbox_relations br2 WHERE rm.relation_id = br2.id
                         ) GROUP BY rm.relation_id
                     ) rids ON r.id = rids.relation_id""")
-        print cursor.query
+        logging.debug(cursor.query)
         if cursor.rowcount == 0:
             break
 
@@ -465,4 +466,4 @@ def search_primitives(predicate):
     return Response(stream_osm_data(cursor), mimetype='text/xml')
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
