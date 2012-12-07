@@ -435,14 +435,7 @@ def search_relations(predicate):
     except ValueError, e:
         return Response(e.message, status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    try:
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/*<string:predicate>')
 def search_primitives(predicate):
@@ -453,21 +446,14 @@ def search_primitives(predicate):
     except ValueError, e:
         return Response(e.message, status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, query_str, query_objs)
 
-    try:
-        query_nodes(cursor, query_str, query_objs)
+    query_ways(g.cursor, query_str.replace('geom', 'linestring'), query_objs)
+    backfill_way_nodes(g.cursor)
 
-        query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
-        backfill_way_nodes(cursor)
+    query_relations(g.cursor, 'FALSE')
 
-        query_relations(cursor, 'FALSE')
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 if __name__ == "__main__":
     app.run()
