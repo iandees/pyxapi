@@ -116,21 +116,21 @@ def query_nodes(cursor, where_str, where_obj=None):
                         SELECT *
                         FROM nodes
                         WHERE %s""" % where_str, where_obj)
-    logging.info(cursor.query)
+    app.logger.info(cursor.query)
 
 def query_ways(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS
                         SELECT *
                         FROM ways
                         WHERE %s""" % where_str, where_obj)
-    logging.info(cursor.query)
+    app.logger.info(cursor.query)
 
 def query_relations(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS
                         SELECT *
                         FROM relations
                         WHERE %s""" % where_str, where_obj)
-    logging.info(cursor.query)
+    app.logger.info(cursor.query)
 
 def backfill_way_nodes(cursor):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_way_nodes (id bigint) ON COMMIT DROP""")
@@ -158,7 +158,7 @@ def backfill_relations(cursor):
                             INNER JOIN bbox_ways w ON rm.member_id = w.id WHERE rm.member_type = 'W'
                          ) rids GROUP BY relation_id
                     ) rids ON r.id = rids.relation_id""")
-    logging.info(cursor.query)
+    app.logger.info(cursor.query)
 
 def backfill_parent_relations(cursor):
     while True:
@@ -170,7 +170,7 @@ def backfill_parent_relations(cursor):
                             SELECT * FROM bbox_relations br2 WHERE rm.relation_id = br2.id
                         ) GROUP BY rm.relation_id
                     ) rids ON r.id = rids.relation_id""")
-        logging.info(cursor.query)
+        app.logger.info(cursor.query)
         if cursor.rowcount == 0:
             break
 
@@ -249,13 +249,13 @@ def parse_timestamp(osmosis_work_dir):
 
 @app.before_request
 def before_request():
-    logging.info("Request: %s" % request)
+    app.logger.info("Request: %s" % request)
     g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
 @app.teardown_request
 def teardown_request(exception):
     if exception:
-        logging.error("Teardown request due to exception: %s" % e.message)
+        app.logger.error("Teardown request due to exception: %s" % exception.message)
         g.cursor.connection.rollback()
 
 @app.route("/api/capabilities")
@@ -456,4 +456,4 @@ def search_primitives(predicate):
     return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
