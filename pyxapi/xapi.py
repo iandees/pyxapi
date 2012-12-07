@@ -280,7 +280,7 @@ def nodes(ids):
         query_nodes(cursor, 'id IN %s', (tuple(ids),))
 
         if cursor.rowcount < 1:
-            cursor.connection.rollback()
+            cursor.connection.commit()
             return Response('Node %s not found.' % ids, status=404)
 
         query_ways(cursor, 'FALSE')
@@ -288,8 +288,10 @@ def nodes(ids):
         query_relations(cursor, 'FALSE')
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/nodes')
 def nodes_as_queryarg():
@@ -314,7 +316,7 @@ def ways(ids):
         query_ways(cursor, 'id IN %s', (tuple(ids),))
 
         if cursor.rowcount < 1:
-            cursor.connection.rollback()
+            cursor.connection.commit()
             return Response('Way %s not found.' % ids, status=404)
 
         cursor.execute("""ANALYZE bbox_ways""")
@@ -326,8 +328,10 @@ def ways(ids):
         query_relations(cursor, 'FALSE')
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/ways')
 def ways_as_queryarg():
@@ -354,12 +358,14 @@ def relations(ids):
         query_relations(cursor, 'id IN %s', (tuple(ids),))
 
         if cursor.rowcount < 1:
-            cursor.connection.rollback()
+            cursor.connection.commit()
             return Response('Relation %s not found.' % ids, status=404)
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/relations')
 def relations_as_queryarg():
@@ -398,8 +404,10 @@ def map():
         cursor.execute("""ANALYZE bbox_relations""")
 
         return Response(stream_osm_data(cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
@@ -420,8 +428,10 @@ def search_nodes(predicate):
         query_relations(cursor, 'FALSE')
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/way<string:predicate>')
 def search_ways(predicate):
@@ -443,8 +453,10 @@ def search_ways(predicate):
         query_relations(cursor, 'FALSE')
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/relation<string:predicate>')
 def search_relations(predicate):
@@ -459,8 +471,10 @@ def search_relations(predicate):
     try:
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 @app.route('/api/0.6/*<string:predicate>')
 def search_primitives(predicate):
@@ -482,8 +496,10 @@ def search_primitives(predicate):
         query_relations(cursor, 'FALSE')
 
         return Response(stream_osm_data(cursor), mimetype='text/xml')
+    except Exception, e:
+        return Response('Error during query: %s' % e.message, status=500)
     finally:
-        cursor.connection.rollback()
+        cursor.connection.commit()
 
 if __name__ == "__main__":
     app.run()
