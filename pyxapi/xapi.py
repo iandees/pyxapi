@@ -1,5 +1,5 @@
 from xml.dom.minidom import Document
-from flask import Flask, Response, request
+from flask import Flask, Response, request, g
 import psycopg2
 import psycopg2.extras
 import re
@@ -108,6 +108,8 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
         yield '\n'
 
     yield '</osm>\n'
+
+    cursor.connection.rollback()
 
 def query_nodes(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
@@ -245,6 +247,17 @@ def parse_timestamp(osmosis_work_dir):
 
     return time_str
 
+@app.before_request
+def before_request():
+    print "Before request"
+    g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+@app.teardown_request
+def teardown_request(exception):
+    if exception:
+        print "Teardown request due to exception"
+        g.cursor.connection.rollback()
+
 @app.route("/api/capabilities")
 @app.route("/api/0.6/capabilities")
 def capabilities():
@@ -274,24 +287,16 @@ def nodes(ids):
     if not ids:
         return Response('No IDs specified.', status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, 'id IN %s', (tuple(ids),))
 
-    try:
-        query_nodes(cursor, 'id IN %s', (tuple(ids),))
+    if g.cursor.rowcount < 1:
+        return Response('Node %s not found.' % ids, status=404)
 
-        if cursor.rowcount < 1:
-            cursor.connection.commit()
-            return Response('Node %s not found.' % ids, status=404)
+    query_ways(g.cursor, 'FALSE')
 
-        query_ways(cursor, 'FALSE')
+    query_relations(g.cursor, 'FALSE')
 
-        query_relations(cursor, 'FALSE')
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/nodes')
 def nodes_as_queryarg():
@@ -308,30 +313,22 @@ def ways(ids):
     if not ids:
         return Response('No IDs specified.', status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, 'FALSE')
 
-    try:
-        query_nodes(cursor, 'FALSE')
+    query_ways(g.cursor, 'id IN %s', (tuple(ids),))
 
-        query_ways(cursor, 'id IN %s', (tuple(ids),))
+    if g.cursor.rowcount < 1:
+        return Response('Way %s not found.' % ids, status=404)
 
-        if cursor.rowcount < 1:
-            cursor.connection.commit()
-            return Response('Way %s not found.' % ids, status=404)
+    g.cursor.execute("""ANALYZE bbox_ways""")
 
-        cursor.execute("""ANALYZE bbox_ways""")
+    backfill_way_nodes(g.cursor)
 
-        backfill_way_nodes(cursor)
+    g.cursor.execute("""ANALYZE bbox_nodes""")
 
-        cursor.execute("""ANALYZE bbox_nodes""")
+    query_relations(g.cursor, 'FALSE')
 
-        query_relations(cursor, 'FALSE')
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/ways')
 def ways_as_queryarg():
@@ -348,24 +345,16 @@ def relations(ids):
     if not ids:
         return Response('No IDs specified.', status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, 'FALSE')
 
-    try:
-        query_nodes(cursor, 'FALSE')
+    query_ways(g.cursor, 'FALSE')
 
-        query_ways(cursor, 'FALSE')
+    query_relations(g.cursor, 'id IN %s', (tuple(ids),))
 
-        query_relations(cursor, 'id IN %s', (tuple(ids),))
+    if g.cursor.rowcount < 1:
+        return Response('Relation %s not found.' % ids, status=404)
 
-        if cursor.rowcount < 1:
-            cursor.connection.commit()
-            return Response('Relation %s not found.' % ids, status=404)
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/relations')
 def relations_as_queryarg():
@@ -386,28 +375,21 @@ def map():
     except ValueError, e:
         return Response(e.message, status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, query_str, query_objs)
+    g.cursor.execute("""ALTER TABLE ONLY bbox_nodes ADD CONSTRAINT pk_bbox_nodes PRIMARY KEY (id)""")
 
-    try:
-        query_nodes(cursor, query_str, query_objs)
-        cursor.execute("""ALTER TABLE ONLY bbox_nodes ADD CONSTRAINT pk_bbox_nodes PRIMARY KEY (id)""")
+    query_ways(g.cursor, query_str.replace('geom', 'linestring'), query_objs)
+    g.cursor.execute("""ALTER TABLE ONLY bbox_ways ADD CONSTRAINT pk_bbox_ways PRIMARY KEY (id)""")
 
-        query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
-        cursor.execute("""ALTER TABLE ONLY bbox_ways ADD CONSTRAINT pk_bbox_ways PRIMARY KEY (id)""")
+    backfill_relations(g.cursor)
+    backfill_parent_relations(g.cursor)
+    backfill_way_nodes(g.cursor)
 
-        backfill_relations(cursor)
-        backfill_parent_relations(cursor)
-        backfill_way_nodes(cursor)
+    g.cursor.execute("""ANALYZE bbox_nodes""")
+    g.cursor.execute("""ANALYZE bbox_ways""")
+    g.cursor.execute("""ANALYZE bbox_relations""")
 
-        cursor.execute("""ANALYZE bbox_nodes""")
-        cursor.execute("""ANALYZE bbox_ways""")
-        cursor.execute("""ANALYZE bbox_relations""")
-
-        return Response(stream_osm_data(cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
 
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
@@ -418,20 +400,13 @@ def search_nodes(predicate):
     except ValueError, e:
         return Response(e.message, status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, query_str, query_objs)
 
-    try:
-        query_nodes(cursor, query_str, query_objs)
+    query_ways(g.cursor, 'FALSE')
 
-        query_ways(cursor, 'FALSE')
+    query_relations(g.cursor, 'FALSE')
 
-        query_relations(cursor, 'FALSE')
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/way<string:predicate>')
 def search_ways(predicate):
@@ -442,21 +417,14 @@ def search_ways(predicate):
     except ValueError, e:
         return Response(e.message, status=400)
 
-    cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    query_nodes(g.cursor, 'FALSE')
 
-    try:
-        query_nodes(cursor, 'FALSE')
+    query_ways(g.cursor, query_str.replace('geom', 'linestring'), query_objs)
+    backfill_way_nodes(g.cursor)
 
-        query_ways(cursor, query_str.replace('geom', 'linestring'), query_objs)
-        backfill_way_nodes(cursor)
+    query_relations(g.cursor, 'FALSE')
 
-        query_relations(cursor, 'FALSE')
-
-        return Response(stream_osm_data(cursor), mimetype='text/xml')
-    except Exception, e:
-        return Response('Error during query: %s' % e.message, status=500)
-    finally:
-        cursor.connection.commit()
+    return Response(stream_osm_data(g.cursor), mimetype='text/xml')
 
 @app.route('/api/0.6/relation<string:predicate>')
 def search_relations(predicate):
