@@ -236,7 +236,10 @@ def parse_bbox(bbox_str):
     return tuple(float(v) for v in bbox_str.split(','))
 
 def parse_timestamp(osmosis_work_dir):
-    f = open('{}/state.txt'.format(osmosis_work_dir), 'r')
+    try:
+        f = open('{}/state.txt'.format(osmosis_work_dir), 'r')
+    except:
+        return None
 
     time_str = None
     for line in f:
