@@ -279,15 +279,18 @@ def nodes(ids):
     try:
         ids = [int(i) for i in ids.split(',')]
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     if not ids:
+        g.cursor.connection.rollback()
         return Response('No IDs specified.', status=400)
 
     try:
         query_nodes(g.cursor, 'id IN %s', (tuple(ids),))
 
         if g.cursor.rowcount < 1:
+            g.cursor.connection.rollback()
             return Response('Node %s not found.' % ids, status=404)
 
         query_ways(g.cursor, 'FALSE')
@@ -310,9 +313,11 @@ def ways(ids):
     try:
         ids = [int(i) for i in ids.split(',')]
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     if not ids:
+        g.cursor.connection.rollback()
         return Response('No IDs specified.', status=400)
 
     try:
@@ -321,6 +326,7 @@ def ways(ids):
         query_ways(g.cursor, 'id IN %s', (tuple(ids),))
 
         if g.cursor.rowcount < 1:
+            g.cursor.connection.rollback()
             return Response('Way %s not found.' % ids, status=404)
 
         g.cursor.execute("""ANALYZE bbox_ways""")
@@ -346,9 +352,11 @@ def relations(ids):
     try:
         ids = [int(i) for i in ids.split(',')]
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     if not ids:
+        g.cursor.connection.rollback()
         return Response('No IDs specified.', status=400)
 
     try:
@@ -359,6 +367,7 @@ def relations(ids):
         query_relations(g.cursor, 'id IN %s', (tuple(ids),))
 
         if g.cursor.rowcount < 1:
+            g.cursor.connection.rollback()
             return Response('Relation %s not found.' % ids, status=404)
     except Exception, e:
         g.cursor.connection.rollback()
@@ -376,13 +385,16 @@ def map():
     bbox = request.args.get('bbox')
 
     if not bbox:
+        g.cursor.connection.rollback()
         return Response('No bbox specified.', status=400)
 
     try:
         (query_str, query_objs) = parse_xapi('[bbox=%s]' % bbox)
     except QueryError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     try:
@@ -410,8 +422,10 @@ def search_nodes(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     try:
@@ -431,8 +445,10 @@ def search_ways(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     try:
@@ -453,8 +469,10 @@ def search_relations(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     return Response(stream_osm_data(g.cursor), mimetype='text/xml')
@@ -464,8 +482,10 @@ def search_primitives(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
     except ValueError, e:
+        g.cursor.connection.rollback()
         return Response(e.message, status=400)
 
     try:
