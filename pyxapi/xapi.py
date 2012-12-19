@@ -15,6 +15,7 @@ def write_primitive_attributes(element, primitive):
     element.setAttribute("id", str(primitive.get('id')))
     element.setAttribute("version", str(primitive.get('version')))
     element.setAttribute("changeset", str(primitive.get('changeset_id')))
+    element.setAttribute("user", str(primitive.get('name')))
     element.setAttribute("uid", str(primitive.get('user_id')))
     element.setAttribute("visible", "true")
     element.setAttribute("timestamp", primitive.get('tstamp').isoformat())
@@ -42,7 +43,10 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
         if bbox:
             yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>\n'.format(*bbox)
 
-        cursor.execute("SELECT id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, tstamp, tags FROM bbox_nodes ORDER BY id")
+        cursor.execute('''SELECT bbox_nodes.id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, name, tstamp, tags 
+                        FROM bbox_nodes, users 
+                        WHERE user_id = users.id 
+                        ORDER BY id''')
 
         for row in cursor:
             elem = doc.createElement('node')
@@ -55,7 +59,8 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
             yield elem.toxml()
             yield '\n'
 
-        cursor.execute("SELECT * FROM bbox_ways ORDER BY id")
+        cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name 
+                        FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
 
         for row in cursor:
             tags = row.get('tags', {})
@@ -74,7 +79,8 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
             yield elem.toxml()
             yield '\n'
 
-        cursor.execute("SELECT * FROM bbox_relations ORDER BY id")
+        cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name 
+                        FROM bbox_relations, users where user_id = users.id ORDER BY id''')
 
         relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
         for row in cursor:
