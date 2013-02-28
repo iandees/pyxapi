@@ -28,7 +28,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
     """Streams OSM data from psql temp tables."""
 
     try:
-        yield '{\n'
+        yield '{'
 
         if timestamp:
             yield '"timestamp": "{}",'.format(timestamp)
@@ -40,7 +40,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
         yield '"license": "http://opendatacommons.org/licenses/odbl/1-0/", '
 
         if bbox:
-            yield '"bounds": {{"minlat": {1}, "minlon": {0}, "maxlat": {3}, "maxlon": {2}}},\n'.format(*bbox)
+            yield '"bounds": {{"minlat": {1}, "minlon": {0}, "maxlat": {3}, "maxlon": {2}}},'.format(*bbox)
 
         cursor.execute('''SELECT bbox_nodes.id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, name, tstamp, tags
                         FROM bbox_nodes, users
@@ -60,9 +60,9 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
             yield write_tags_json(row)
 
             if n == rows:
-                yield '}\n'
+                yield '}'
             else:
-                yield '},\n'
+                yield '},'
 
         cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
                         FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
@@ -82,9 +82,9 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
             yield ', "nds": [%s]' % ','.join(itertools.imap(str, row.get('nodes', [])))
 
             if n == rows:
-                yield '}\n'
+                yield '}'
             else:
-                yield '},\n'
+                yield '},'
 
         cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
                         FROM bbox_relations, users where user_id = users.id ORDER BY id''')
@@ -123,19 +123,17 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
 
                 yield '{{"role": "{member_role}", "type": "{member_type}", "ref": {member_id}}}'.format(**member)
 
-                if member_n == member_rows:
-                    yield '\n'
-                else:
-                    yield ',\n'
+                if member_n != member_rows:
+                    yield ','
 
             yield ']'
 
             if n == rows:
-                yield '}\n'
+                yield '}'
             else:
-                yield '},\n'
+                yield '},'
 
-        yield ']}\n'
+        yield ']}'
     finally:
         cursor.connection.rollback()
 
