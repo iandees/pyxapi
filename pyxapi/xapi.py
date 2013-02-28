@@ -11,7 +11,135 @@ osmosis_work_dir = '/Users/iandees/.osmosis'
 db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
 psycopg2.extras.register_hstore(db)
 
-def write_primitive_attributes(element, primitive):
+def write_primitive_attributes_json(primitive):
+    return '"id": {}, "version": {}, "changeset": {}, ' \
+        '"user": "{}", "uid": {}, "visible": true, "timestamp": "{}"'.format(
+            primitive.get('id'),
+            primitive.get('version'),
+            primitive.get('changeset_id'),
+            primitive.get('name'),
+            primitive.get('user_id'),
+            primitive.get('tstamp').isoformat())
+
+def write_tags_json(primitive):
+    return '"tags": {%s}' % ','.join(['"{}": "{}"'.format(k, v) for (k,v) in primitive.get('tags', {}).iteritems()])
+
+def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
+    """Streams OSM data from psql temp tables."""
+
+    try:
+        yield '{\n'
+
+        if timestamp:
+            yield '"timestamp": "{}",'.format(timestamp)
+
+        yield '"version": "0.6", '
+        yield '"generator": "pyxapi", '
+        yield '"copyright": "OpenStreetMap and contributors", '
+        yield '"attribution": "http://www.openstreetmap.org/copyright", '
+        yield '"license": "http://opendatacommons.org/licenses/odbl/1-0/", '
+
+        if bbox:
+            yield '"bounds": {{"minlat": {1}, "minlon": {0}, "maxlat": {3}, "maxlon": {2}}}\n'.format(*bbox)
+
+        cursor.execute('''SELECT bbox_nodes.id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, name, tstamp, tags
+                        FROM bbox_nodes, users
+                        WHERE user_id = users.id
+                        ORDER BY id''')
+
+        rows = cursor.rowcount
+        n = 0
+
+        yield ', "nodes": ['
+        for row in cursor:
+            n += 1
+            yield '{'
+            yield write_primitive_attributes_json(row)
+            yield ', "lat": {0}, "lon": {1}, '.format(row.get('latitude'), row.get('longitude'))
+
+            yield write_tags_json(row)
+
+            if n == rows:
+                yield '}\n'
+            else:
+                yield '},\n'
+
+        cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
+                        FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
+
+        rows = cursor.rowcount
+        n = 0
+
+        yield '], "ways": ['
+        for row in cursor:
+            n += 1
+            yield '{'
+            yield write_primitive_attributes_json(row)
+            yield ','
+
+            yield write_tags_json(row)
+
+            yield ', "nds": [%s]' % ','.join(itertools.imap(str, row.get('nodes', [])))
+
+            if n == rows:
+                yield '}\n'
+            else:
+                yield '},\n'
+
+        cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
+                        FROM bbox_relations, users where user_id = users.id ORDER BY id''')
+
+        rows = cursor.rowcount
+        n = 0
+
+        yield '], "relations": ['
+        relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        for row in cursor:
+            n += 1
+            yield '{'
+            relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
+                                       FROM relation_members f
+                                       WHERE relation_id=%s
+                                       ORDER BY sequence_id""", (row.get('id'),))
+
+            yield write_primitive_attributes_json(row)
+            yield ','
+
+            yield write_tags_json(row)
+
+            yield ', "members": ['
+            member_rows = relation_cursor.rowcount
+            member_n = 0
+            for member in relation_cursor:
+                member_n += 1
+                member_type = member.get('member_type', None)
+                if member_type == 'N':
+                    member_type = 'node'
+                elif member_type == 'W':
+                    member_type = 'way'
+                elif member_type == 'R':
+                    member_type = 'relation'
+                member['member_type'] = member_type
+
+                yield '{{"role": "{member_role}", "type": "{member_type}", "ref": {member_id}}}'.format(**member)
+
+                if member_n == member_rows:
+                    yield '\n'
+                else:
+                    yield ',\n'
+
+            yield ']'
+
+            if n == rows:
+                yield '}\n'
+            else:
+                yield '},\n'
+
+        yield ']}\n'
+    finally:
+        cursor.connection.rollback()
+
+def write_primitive_attributes_xml(element, primitive):
     element.setAttribute("id", str(primitive.get('id')))
     element.setAttribute("version", str(primitive.get('version')))
     element.setAttribute("changeset", str(primitive.get('changeset_id')))
@@ -20,15 +148,16 @@ def write_primitive_attributes(element, primitive):
     element.setAttribute("visible", "true")
     element.setAttribute("timestamp", primitive.get('tstamp').isoformat())
 
-def write_tags(doc, parent_element, primitive):
+def write_tags_xml(doc, parent_element, primitive):
     for (k, v) in primitive.get('tags', {}).iteritems():
         tag_elem = doc.createElement('tag')
         tag_elem.setAttribute("k", k)
         tag_elem.setAttribute("v", v)
         parent_element.appendChild(tag_elem)
 
-def stream_osm_data(cursor, bbox=None, timestamp=None):
+def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
     """Streams OSM data from psql temp tables."""
+
     doc = Document()
 
     try:
@@ -43,9 +172,9 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
         if bbox:
             yield '<bounds minlat="{1}" minlon="{0}" maxlat="{3}" maxlon="{2}"/>\n'.format(*bbox)
 
-        cursor.execute('''SELECT bbox_nodes.id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, name, tstamp, tags 
-                        FROM bbox_nodes, users 
-                        WHERE user_id = users.id 
+        cursor.execute('''SELECT bbox_nodes.id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, name, tstamp, tags
+                        FROM bbox_nodes, users
+                        WHERE user_id = users.id
                         ORDER BY id''')
 
         for row in cursor:
@@ -59,7 +188,7 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
             yield elem.toxml()
             yield '\n'
 
-        cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name 
+        cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
                         FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
 
         for row in cursor:
@@ -79,7 +208,7 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
             yield elem.toxml()
             yield '\n'
 
-        cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name 
+        cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
                         FROM bbox_relations, users where user_id = users.id ORDER BY id''')
 
         relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -117,6 +246,9 @@ def stream_osm_data(cursor, bbox=None, timestamp=None):
         yield '</osm>\n'
     finally:
         cursor.connection.rollback()
+
+def stream_osm_data(cursor, bbox=None, timestamp=None):
+    return stream_osm_data_as_json(cursor, bbox, timestamp)
 
 def query_nodes(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
