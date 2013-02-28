@@ -40,7 +40,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
         yield '"license": "http://opendatacommons.org/licenses/odbl/1-0/", '
 
         if bbox:
-            yield '"bounds": {{"minlat": {1}, "minlon": {0}, "maxlat": {3}, "maxlon": {2}}}\n'.format(*bbox)
+            yield '"bounds": {{"minlat": {1}, "minlon": {0}, "maxlat": {3}, "maxlon": {2}}},\n'.format(*bbox)
 
         cursor.execute('''SELECT bbox_nodes.id, version, changeset_id, ST_X(geom) as longitude, ST_Y(geom) as latitude, user_id, name, tstamp, tags
                         FROM bbox_nodes, users
@@ -50,7 +50,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
         rows = cursor.rowcount
         n = 0
 
-        yield ', "nodes": ['
+        yield '"nodes": ['
         for row in cursor:
             n += 1
             yield '{'
