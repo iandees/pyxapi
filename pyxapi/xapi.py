@@ -177,11 +177,11 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
         for row in cursor:
             elem = doc.createElement('node')
-            write_primitive_attributes(elem, row)
+            write_primitive_attributes_xml(elem, row)
             elem.setAttribute("lat", str(row.get('latitude')))
             elem.setAttribute("lon", str(row.get('longitude')))
 
-            write_tags(doc, elem, row)
+            write_tags_xml(doc, elem, row)
 
             yield elem.toxml()
             yield '\n'
@@ -194,9 +194,9 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
             nds = row.get('nodes', [])
 
             elem = doc.createElement('way')
-            write_primitive_attributes(elem, row)
+            write_primitive_attributes_xml(elem, row)
 
-            write_tags(doc, elem, row)
+            write_tags_xml(doc, elem, row)
 
             for nd in nds:
                 nd_elem = doc.createElement('nd')
@@ -218,9 +218,9 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                                        ORDER BY sequence_id""", (row.get('id'),))
 
             elem = doc.createElement('relation')
-            write_primitive_attributes(elem, row)
+            write_primitive_attributes_xml(elem, row)
 
-            write_tags(doc, elem, row)
+            write_tags_xml(doc, elem, row)
 
             for member in relation_cursor:
                 member_type = member.get('member_type', None)
