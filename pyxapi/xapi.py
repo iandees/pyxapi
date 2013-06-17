@@ -11,6 +11,16 @@ osmosis_work_dir = '/Users/iandees/.osmosis'
 db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
 psycopg2.extras.register_hstore(db)
 
+@app.teardown_request
+def teardown_request(exception):
+    cursor = getattr(g, 'cursor', None)
+    if cursor is not None:
+        cursor.connection.close()
+
+@app.before_request
+def before_request():
+    g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
         '"user": "{}", "uid": {}, "visible": true, "timestamp": "{}"'.format(
@@ -245,9 +255,6 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
     finally:
         cursor.connection.rollback()
 
-def stream_osm_data(cursor, bbox=None, timestamp=None):
-    return stream_osm_data_as_json(cursor, bbox, timestamp)
-
 def query_nodes(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
                         SELECT *
@@ -386,10 +393,6 @@ def parse_timestamp(osmosis_work_dir):
     f.close()
 
     return time_str
-
-@app.before_request
-def before_request():
-    g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
 @app.route("/api/capabilities")
 @app.route("/api/0.6/capabilities")
