@@ -665,4 +665,4 @@ def search_primitives(predicate):
         return Response(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir)), mimetype='text/xml')
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5000, processes=5)
