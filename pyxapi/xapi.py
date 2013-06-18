@@ -15,6 +15,8 @@ def before_request():
     psycopg2.extras.register_hstore(g.db)
     g.cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
+    app.logger.info('Start request: %s' % request.url)
+
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
         '"user": "{}", "uid": {}, "visible": true, "timestamp": "{}"'.format(
@@ -190,8 +192,6 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
             yield elem.toxml()
             yield '\n'
 
-        app.logger.info("Wrote out nodes.")
-
         cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
                         FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
 
@@ -211,8 +211,6 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
             yield elem.toxml()
             yield '\n'
-
-        app.logger.info("Wrote out ways.")
 
         cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
                         FROM bbox_relations, users where user_id = users.id ORDER BY id''')
@@ -248,8 +246,6 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
             yield elem.toxml()
             yield '\n'
-
-        app.logger.info("Wrote out relations.")
 
         yield '</osm>\n'
     finally:
