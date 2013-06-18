@@ -190,6 +190,8 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
             yield elem.toxml()
             yield '\n'
 
+        app.logger.info("Wrote out nodes.")
+
         cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
                         FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
 
@@ -209,6 +211,8 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
             yield elem.toxml()
             yield '\n'
+
+        app.logger.info("Wrote out ways.")
 
         cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
                         FROM bbox_relations, users where user_id = users.id ORDER BY id''')
@@ -244,6 +248,8 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
             yield elem.toxml()
             yield '\n'
+
+        app.logger.info("Wrote out relations.")
 
         yield '</osm>\n'
     finally:
