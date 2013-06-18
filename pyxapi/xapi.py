@@ -11,12 +11,6 @@ osmosis_work_dir = '/Users/iandees/.osmosis'
 db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
 psycopg2.extras.register_hstore(db)
 
-@app.teardown_request
-def teardown_request(exception):
-    cursor = getattr(g, 'cursor', None)
-    if cursor is not None:
-        cursor.connection.close()
-
 @app.before_request
 def before_request():
     g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
