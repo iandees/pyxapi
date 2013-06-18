@@ -140,7 +140,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
 
         yield ']}'
     finally:
-        cursor.connection.rollback()
+        cursor.close()
 
 def write_primitive_attributes_xml(element, primitive):
     element.setAttribute("id", str(primitive.get('id')))
@@ -248,7 +248,7 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
         yield '</osm>\n'
     finally:
-        cursor.connection.rollback()
+        cursor.close()
 
 def query_nodes(cursor, where_str, where_obj=None):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
@@ -418,18 +418,18 @@ def nodes(ids):
     try:
         ids = [int(i) for i in ids.split(',')]
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     if not ids:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response('No IDs specified.', status=400)
 
     try:
         query_nodes(g.cursor, 'id IN %s', (tuple(ids),))
 
         if g.cursor.rowcount < 1:
-            g.cursor.connection.rollback()
+            g.cursor.close()
             return Response('Node %s not found.' % ids, status=404)
 
         query_ways(g.cursor, 'FALSE')
@@ -437,7 +437,7 @@ def nodes(ids):
         query_relations(g.cursor, 'FALSE')
 
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -455,11 +455,11 @@ def ways(ids):
     try:
         ids = [int(i) for i in ids.split(',')]
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     if not ids:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response('No IDs specified.', status=400)
 
     try:
@@ -468,7 +468,7 @@ def ways(ids):
         query_ways(g.cursor, 'id IN %s', (tuple(ids),))
 
         if g.cursor.rowcount < 1:
-            g.cursor.connection.rollback()
+            g.cursor.close()
             return Response('Way %s not found.' % ids, status=404)
 
         g.cursor.execute("""ANALYZE bbox_ways""")
@@ -479,7 +479,7 @@ def ways(ids):
 
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -497,11 +497,11 @@ def relations(ids):
     try:
         ids = [int(i) for i in ids.split(',')]
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     if not ids:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response('No IDs specified.', status=400)
 
     try:
@@ -512,10 +512,10 @@ def relations(ids):
         query_relations(g.cursor, 'id IN %s', (tuple(ids),))
 
         if g.cursor.rowcount < 1:
-            g.cursor.connection.rollback()
+            g.cursor.close()
             return Response('Relation %s not found.' % ids, status=404)
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -533,16 +533,16 @@ def map():
     bbox = request.args.get('bbox')
 
     if not bbox:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response('No bbox specified.', status=400)
 
     try:
         (query_str, query_objs) = parse_xapi('[bbox=%s]' % bbox)
     except QueryError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     try:
@@ -560,7 +560,7 @@ def map():
         g.cursor.execute("""ANALYZE bbox_ways""")
         g.cursor.execute("""ANALYZE bbox_relations""")
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -573,10 +573,10 @@ def search_nodes(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     try:
@@ -586,7 +586,7 @@ def search_nodes(predicate):
 
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -599,10 +599,10 @@ def search_ways(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     try:
@@ -613,7 +613,7 @@ def search_ways(predicate):
 
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -626,10 +626,10 @@ def search_relations(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     if request_wants_json():
@@ -642,10 +642,10 @@ def search_primitives(predicate):
     try:
         (query_str, query_objs) = parse_xapi(predicate)
     except QueryError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
     except ValueError, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=400)
 
     try:
@@ -656,7 +656,7 @@ def search_primitives(predicate):
 
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
-        g.cursor.connection.rollback()
+        g.cursor.close()
         return Response(e.message, status=500)
 
     if request_wants_json():
