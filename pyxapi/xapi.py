@@ -237,7 +237,7 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                 member_elem = etree.Element('member', {
                     'role': member.get('member_role'),
                     'type': member.get('member_type'),
-                    'ref': member.get('member_id')
+                    'ref': str(member.get('member_id'))
                 })
                 elem.append(member_elem)
 
