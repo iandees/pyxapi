@@ -8,13 +8,12 @@ import logging
 
 app = Flask(__name__)
 osmosis_work_dir = '/Users/iandees/.osmosis'
-db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
-psycopg2.extras.register_hstore(db)
 
 @app.before_request
 def before_request():
+    db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
+    psycopg2.extras.register_hstore(db)
     g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    app.logger.info("Cursor for this request: %s" % g.cursor)
 
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
