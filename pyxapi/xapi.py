@@ -11,9 +11,9 @@ osmosis_work_dir = '/Users/iandees/.osmosis'
 
 @app.before_request
 def before_request():
-    db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
-    psycopg2.extras.register_hstore(db)
-    g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    g.db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
+    psycopg2.extras.register_hstore(g.db)
+    g.cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
@@ -97,7 +97,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
         n = 0
 
         yield '], "relations": ['
-        relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        relation_cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
         for row in cursor:
             n += 1
             yield '{'
@@ -217,7 +217,7 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
         cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
                         FROM bbox_relations, users where user_id = users.id ORDER BY id''')
 
-        relation_cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        relation_cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
         for row in cursor:
             tags = row.get('tags', {})
             relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
