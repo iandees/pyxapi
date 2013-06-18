@@ -61,7 +61,7 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
             n += 1
             yield '{'
             yield write_primitive_attributes_json(row)
-            yield ', "lat": {0}, "lon": {1}, '.format(row.get('latitude'), row.get('longitude'))
+            yield ', "lat": %3.7f, "lon": %3.7f, ' % (row.get('latitude'), row.get('longitude'))
 
             yield write_tags_json(row)
 
@@ -154,9 +154,7 @@ def write_primitive_attributes_xml(element, primitive):
 
 def write_tags_xml(parent_element, primitive):
     for (k, v) in primitive.get('tags', {}).iteritems():
-        tag_elem = etree.Element('tag')
-        tag_elem.set('k', k)
-        tag_elem.set('v', v)
+        tag_elem = etree.Element('tag', {'k': unicode(k, 'utf8'), 'v': unicode(v, 'utf8')})
         parent_element.append(tag_elem)
 
 def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
@@ -180,14 +178,15 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                         ORDER BY id''')
 
         for row in cursor:
-            elem = etree.Element('node')
+            elem = etree.Element('node', {
+                "lat": "%3.7f" % (row.get('latitude')),
+                "lon": "%3.7f" % (row.get('longitude'))
+            })
             write_primitive_attributes_xml(elem, row)
-            elem.set("lat", str(row.get('latitude')))
-            elem.set("lon", str(row.get('longitude')))
 
             write_tags_xml(elem, row)
 
-            yield etree.tostring(elem)
+            yield etree.tostring(elem, encoding='utf8')
             yield '\n'
 
         cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
@@ -206,7 +205,7 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                 nd_elem = etree.Element('nd', ref=str(nd))
                 elem.append(nd_elem)
 
-            yield etree.tostring(elem)
+            yield etree.tostring(elem, encoding='utf8')
             yield '\n'
 
         cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
@@ -235,13 +234,14 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                     member_type = 'relation'
                 member['member_type'] = member_type
 
-                member_elem = etree.Element('member', dict(
-                    role=member.get('member_role'),
-                    type=member.get('member_type'),
-                    ref=str(member.get('member_id'))))
+                member_elem = etree.Element('member', {
+                    'role': member.get('member_role'),
+                    'type': member.get('member_type'),
+                    'ref': member.get('member_id')
+                })
                 elem.append(member_elem)
 
-            yield etree.tostring(elem)
+            yield etree.tostring(elem, encoding='utf8')
             yield '\n'
 
         yield '</osm>\n'
