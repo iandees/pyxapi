@@ -14,7 +14,7 @@ psycopg2.extras.register_hstore(db)
 @app.before_request
 def before_request():
     g.cursor = db.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    app.logger.info("Cursor for this request: %s" % g.cursor.description)
+    app.logger.info("Cursor for this request: %s" % g.cursor)
 
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
