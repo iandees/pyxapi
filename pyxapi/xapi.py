@@ -15,8 +15,6 @@ def before_request():
     psycopg2.extras.register_hstore(g.db)
     g.cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    app.logger.info('Start request: %s' % request.url)
-
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
         '"user": "{}", "uid": {}, "visible": true, "timestamp": "{}"'.format(
@@ -147,7 +145,7 @@ def write_primitive_attributes_xml(element, primitive):
     element.set("id", str(primitive.get('id')))
     element.set("version", str(primitive.get('version')))
     element.set("changeset", str(primitive.get('changeset_id')))
-    element.set("user", str(primitive.get('name')))
+    element.set("user", unicode(primitive.get('name'), 'utf8'))
     element.set("uid", str(primitive.get('user_id')))
     element.set("visible", "true")
     element.set("timestamp", primitive.get('tstamp').isoformat())
@@ -235,7 +233,7 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                 member['member_type'] = member_type
 
                 member_elem = etree.Element('member', {
-                    'role': member.get('member_role'),
+                    'role': unicode(member.get('member_role'), 'utf8'),
                     'type': member.get('member_type'),
                     'ref': str(member.get('member_id'))
                 })
