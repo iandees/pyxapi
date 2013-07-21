@@ -448,7 +448,7 @@ def capabilities():
     return Response(xml, mimetype='text/xml')
 
 def request_wants_json():
-    best = request.accept_mimetypes.best_match(['application/json'])
+    best = request.accept_mimetypes.best_match(['application/json', 'text/xml'])
     return best == 'application/json' and \
            request.accept_mimetypes[best] > request.accept_mimetypes['text/html']
 
