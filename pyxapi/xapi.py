@@ -445,12 +445,12 @@ def capabilities():
     <timeout seconds="300"/>
   </api>
 </osm>""".format(timestamp)
-    return Response(xml, mimetype='text/xml')
+    return Response(xml, mimetype='application/xml')
 
 def request_wants_json():
-    best = request.accept_mimetypes.best_match(['application/json', 'text/xml'])
+    best = request.accept_mimetypes.best_match(['application/json', 'application/xml'])
     return best == 'application/json' and \
-           request.accept_mimetypes[best] > request.accept_mimetypes['text/html']
+           request.accept_mimetypes[best] >= request.accept_mimetypes['application/xml']
 
 @app.route("/api/0.6/node/<string:ids>")
 def nodes(ids):
@@ -482,7 +482,7 @@ def nodes(ids):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/nodes')
 def nodes_as_queryarg():
@@ -524,7 +524,7 @@ def ways(ids):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/ways')
 def ways_as_queryarg():
@@ -560,7 +560,7 @@ def relations(ids):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/relations')
 def relations_as_queryarg():
@@ -606,7 +606,7 @@ def map():
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, bbox=parse_bbox(bbox), timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
@@ -632,7 +632,7 @@ def search_nodes(predicate):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/way<string:predicate>')
 def search_ways(predicate):
@@ -659,7 +659,7 @@ def search_ways(predicate):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/relation<string:predicate>')
 def search_relations(predicate):
@@ -675,7 +675,7 @@ def search_relations(predicate):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 @app.route('/api/0.6/*<string:predicate>')
 def search_primitives(predicate):
@@ -702,7 +702,7 @@ def search_primitives(predicate):
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
     else:
-        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='text/xml')
+        return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, processes=5)
