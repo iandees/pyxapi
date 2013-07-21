@@ -1,18 +1,64 @@
 from lxml import etree
-from flask import Flask, Response, request, g, stream_with_context
+from flask import Flask, Response, request, g, stream_with_context, make_response, current_app
+from functools import update_wrapper
 import psycopg2
 import psycopg2.extras
 import re
 import itertools
+from datetime import timedelta
 
 app = Flask(__name__)
 osmosis_work_dir = '/Users/iandees/.osmosis'
+
+
+def crossdomain(origin=None, methods=None, headers=None,
+                max_age=21600, attach_to_all=True,
+                automatic_options=True):
+    if methods is not None:
+        methods = ', '.join(sorted(x.upper() for x in methods))
+    if headers is not None and not isinstance(headers, basestring):
+        headers = ', '.join(x.upper() for x in headers)
+    if not isinstance(origin, basestring):
+        origin = ', '.join(origin)
+    if isinstance(max_age, timedelta):
+        max_age = max_age.total_seconds()
+
+    def get_methods():
+        if methods is not None:
+            return methods
+
+        options_resp = current_app.make_default_options_response()
+        return options_resp.headers['allow']
+
+    def decorator(f):
+        def wrapped_function(*args, **kwargs):
+            if automatic_options and request.method == 'OPTIONS':
+                resp = current_app.make_default_options_response()
+            else:
+                resp = make_response(f(*args, **kwargs))
+            if not attach_to_all and request.method != 'OPTIONS':
+                return resp
+
+            h = resp.headers
+
+            h['Access-Control-Allow-Origin'] = origin
+            h['Access-Control-Allow-Methods'] = get_methods()
+            h['Access-Control-Max-Age'] = str(max_age)
+            if headers is not None:
+                h['Access-Control-Allow-Headers'] = headers
+            return resp
+
+        f.provide_automatic_options = False
+        return update_wrapper(wrapped_function, f)
+    return decorator
+
 
 @app.before_request
 def before_request():
     g.db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
     psycopg2.extras.register_hstore(g.db)
     g.cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
 
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
@@ -24,8 +70,10 @@ def write_primitive_attributes_json(primitive):
             primitive.get('user_id'),
             primitive.get('tstamp').isoformat())
 
+
 def write_tags_json(primitive):
     return '"tags": {%s}' % ','.join(['"{}": "{}"'.format(k, v) for (k,v) in primitive.get('tags', {}).iteritems()])
+
 
 def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
     """Streams OSM data from psql temp tables."""
@@ -520,6 +568,7 @@ def relations_as_queryarg():
     return relations(ids)
 
 @app.route('/api/0.6/map')
+@crossdomain(origin='*')
 def map():
     bbox = request.args.get('bbox')
 
