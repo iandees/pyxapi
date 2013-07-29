@@ -59,6 +59,9 @@ def before_request():
     psycopg2.extras.register_hstore(g.db)
     g.cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
+    # Single statement timeout set to 3 minutes
+    g.cursor.execute('SET statement_timeout TO 180000;')
+
 
 def write_primitive_attributes_json(primitive):
     return '"id": {}, "version": {}, "changeset": {}, ' \
