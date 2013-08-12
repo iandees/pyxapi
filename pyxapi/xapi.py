@@ -5,7 +5,8 @@ import psycopg2
 import psycopg2.extras
 import re
 import itertools
-from datetime import timedelta
+import json
+from datetime import timedelta, datetime
 
 app = Flask(__name__)
 osmosis_work_dir = '/Users/iandees/.osmosis'
@@ -62,21 +63,10 @@ def before_request():
     # Single statement timeout set to 3 minutes
     g.cursor.execute('SET statement_timeout TO 180000;')
 
-
-def write_primitive_attributes_json(primitive):
-    return '"id": {}, "version": {}, "changeset": {}, ' \
-        '"user": "{}", "uid": {}, "visible": true, "timestamp": "{}"'.format(
-            primitive.get('id'),
-            primitive.get('version'),
-            primitive.get('changeset_id'),
-            primitive.get('name'),
-            primitive.get('user_id'),
-            primitive.get('tstamp').isoformat())
-
-
-def write_tags_json(primitive):
-    return '"tags": {%s}' % ','.join(['"{}": "{}"'.format(k, v) for (k,v) in primitive.get('tags', {}).iteritems()])
-
+def json_default(o):
+    otype = type(o)
+    if type(o) is datetime:
+        return o.isoformat()
 
 def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
     """Streams OSM data from psql temp tables."""
@@ -106,17 +96,22 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
 
         yield '"nodes": ['
         for row in cursor:
+            yield json.dumps({
+                'id': row['id'],
+                'version': row['version'],
+                'changeset': row['changeset_id'],
+                'user': row['name'],
+                'uid': row['user_id'],
+                'visible': True,
+                'timestamp': row['tstamp'],
+                'lat': row['latitude'],
+                'lon': row['longitude'],
+                'tags': row['tags']
+            }, default=json_default)
             n += 1
-            yield '{'
-            yield write_primitive_attributes_json(row)
-            yield ', "lat": %3.7f, "lon": %3.7f, ' % (row.get('latitude'), row.get('longitude'))
 
-            yield write_tags_json(row)
-
-            if n == rows:
-                yield '}'
-            else:
-                yield '},'
+            if n != rows:
+                yield ','
 
         cursor.execute('''SELECT bbox_ways.id, version, user_id, tstamp, changeset_id, tags, nodes, name
                         FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
@@ -126,19 +121,21 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
 
         yield '], "ways": ['
         for row in cursor:
+            yield json.dumps({
+                'id': row['id'],
+                'version': row['version'],
+                'changeset': row['changeset_id'],
+                'user': row['name'],
+                'uid': row['user_id'],
+                'visible': True,
+                'timestamp': row['tstamp'],
+                'tags': row['tags'],
+                'nds': row['nodes']
+            }, default=json_default)
             n += 1
-            yield '{'
-            yield write_primitive_attributes_json(row)
-            yield ','
 
-            yield write_tags_json(row)
-
-            yield ', "nds": [%s]' % ','.join(itertools.imap(str, row.get('nodes', [])))
-
-            if n == rows:
-                yield '}'
-            else:
-                yield '},'
+            if n != rows:
+                yield ','
 
         cursor.execute('''SELECT bbox_relations.id, version, user_id, tstamp, changeset_id, tags, name
                         FROM bbox_relations, users where user_id = users.id ORDER BY id''')
@@ -149,23 +146,14 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
         yield '], "relations": ['
         relation_cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
         for row in cursor:
-            n += 1
-            yield '{'
+
+            members = []
             relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
                                        FROM relation_members f
                                        WHERE relation_id=%s
                                        ORDER BY sequence_id""", (row.get('id'),))
 
-            yield write_primitive_attributes_json(row)
-            yield ','
-
-            yield write_tags_json(row)
-
-            yield ', "members": ['
-            member_rows = relation_cursor.rowcount
-            member_n = 0
             for member in relation_cursor:
-                member_n += 1
                 member_type = member.get('member_type', None)
                 if member_type == 'N':
                     member_type = 'node'
@@ -173,19 +161,27 @@ def stream_osm_data_as_json(cursor, bbox=None, timestamp=None):
                     member_type = 'way'
                 elif member_type == 'R':
                     member_type = 'relation'
-                member['member_type'] = member_type
+                members.append({
+                    'role': member['member_role'],
+                    'type': member_type,
+                    'ref': member['member_id']
+                })
 
-                yield '{{"role": "{member_role}", "type": "{member_type}", "ref": {member_id}}}'.format(**member)
+            yield json.dumps({
+                'id': row['id'],
+                'version': row['version'],
+                'changeset': row['changeset_id'],
+                'user': row['name'],
+                'uid': row['user_id'],
+                'visible': True,
+                'timestamp': row['tstamp'],
+                'tags': row['tags'],
+                'members': members
+            }, default=json_default)
+            n += 1
 
-                if member_n != member_rows:
-                    yield ','
-
-            yield ']'
-
-            if n == rows:
-                yield '}'
-            else:
-                yield '},'
+            if n != rows:
+                yield ','
 
         yield ']}'
     finally:
@@ -261,7 +257,6 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
 
         relation_cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
         for row in cursor:
-            tags = row.get('tags', {})
             relation_cursor.execute("""SELECT relation_id AS entity_id, member_id, member_type, member_role, sequence_id
                                        FROM relation_members f
                                        WHERE relation_id=%s
