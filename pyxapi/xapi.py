@@ -10,7 +10,7 @@ import os
 from datetime import timedelta, datetime
 
 app = Flask(__name__)
-osmosis_work_dir = '/Users/iandees/.osmosis'
+osmosis_work_dir = '/home/yellowbkpk/.osmosis'
 
 
 def crossdomain(origin=None, methods=None, headers=None,
@@ -70,7 +70,6 @@ def before_request():
     g.cursor.execute('SET statement_timeout TO 180000;')
 
 def json_default(o):
-    otype = type(o)
     if type(o) is datetime:
         return o.isoformat()
 
@@ -243,7 +242,6 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
                         FROM bbox_ways, users WHERE user_id = users.id ORDER BY id''')
 
         for row in cursor:
-            tags = row.get('tags', {})
             nds = row.get('nodes', [])
 
             elem = etree.Element('way')
