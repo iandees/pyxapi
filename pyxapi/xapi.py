@@ -6,6 +6,7 @@ import psycopg2.extras
 import re
 import itertools
 import json
+import os
 from datetime import timedelta, datetime
 
 app = Flask(__name__)
@@ -56,6 +57,11 @@ def crossdomain(origin=None, methods=None, headers=None,
 
 @app.before_request
 def before_request():
+    # Check load average before allowing a request through
+    (one, five, fifteen) = os.getloadavg()
+    if five > 6.0:
+        return Response("Server is overloaded right now. Try again later.", status=503)
+
     g.db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
     psycopg2.extras.register_hstore(g.db)
     g.cursor = g.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
