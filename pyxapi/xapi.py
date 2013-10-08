@@ -669,6 +669,10 @@ def search_relations(predicate):
     except ValueError, e:
         g.cursor.close()
         return Response(e.message, status=400)
+    
+    query_relations(g.cursor, query_str, query_objs)
+    query_nodes(g.cursor, 'FALSE')
+    query_ways(g.cursor, 'FALSE')
 
     if request_wants_json():
         return Response(stream_with_context(stream_osm_data_as_json(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/json')
