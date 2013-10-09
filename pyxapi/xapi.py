@@ -7,11 +7,16 @@ import re
 import itertools
 import json
 import os
+import logging
 from datetime import timedelta, datetime
 
-app = Flask(__name__)
 osmosis_work_dir = '/home/yellowbkpk/.osmosis'
 
+app = Flask(__name__)
+
+file_handler = logging.FileHandler('xapi.log')
+file_handler.setLevel(logging.INFO)
+app.logger.addHandler(file_handler)
 
 def crossdomain(origin=None, methods=None, headers=None,
                 max_age=21600, attach_to_all=True,
@@ -60,6 +65,7 @@ def before_request():
     # Check load average before allowing a request through
     (one, five, fifteen) = os.getloadavg()
     if five > 6.0:
+        app.logger.info("Rejecting %s from %s because load is %s.", request.url, request.access_route[0], five)
         return Response("Server is overloaded right now. Try again later.", status=503)
 
     g.db = psycopg2.connect(host='localhost', dbname='xapi', user='xapi', password='xapi')
@@ -479,6 +485,7 @@ def nodes(ids):
 
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -521,6 +528,7 @@ def ways(ids):
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -557,6 +565,7 @@ def relations(ids):
             return Response('Relation %s not found.' % ids, status=404)
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -603,6 +612,7 @@ def map():
         g.cursor.execute("""ANALYZE bbox_relations""")
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -629,6 +639,7 @@ def search_nodes(predicate):
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -656,6 +667,7 @@ def search_ways(predicate):
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -703,6 +715,7 @@ def search_primitives(predicate):
         query_relations(g.cursor, 'FALSE')
     except Exception, e:
         g.cursor.close()
+        app.logger.exception(e)
         return Response(e.message, status=500)
 
     if request_wants_json():
@@ -711,4 +724,4 @@ def search_primitives(predicate):
         return Response(stream_with_context(stream_osm_data_as_xml(g.cursor, timestamp=parse_timestamp(osmosis_work_dir))), mimetype='application/xml')
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, processes=5)
+    app.run(debug=True, port=5000, processes=10)
