@@ -301,23 +301,23 @@ def stream_osm_data_as_xml(cursor, bbox=None, timestamp=None):
     finally:
         cursor.close()
 
-def query_nodes(cursor, where_str, where_obj=None):
+def query_nodes(cursor, where_str):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_nodes ON COMMIT DROP AS
                         SELECT *
                         FROM nodes
-                        WHERE %s""" % where_str, where_obj)
+                        WHERE %s""" % where_str)
 
-def query_ways(cursor, where_str, where_obj=None):
+def query_ways(cursor, where_str):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_ways ON COMMIT DROP AS
                         SELECT *
                         FROM ways
-                        WHERE %s""" % where_str, where_obj)
+                        WHERE %s""" % where_str)
 
-def query_relations(cursor, where_str, where_obj=None):
+def query_relations(cursor, where_str):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_relations ON COMMIT DROP AS
                         SELECT *
                         FROM relations
-                        WHERE %s""" % where_str, where_obj)
+                        WHERE %s""" % where_str)
 
 def backfill_way_nodes(cursor):
     cursor.execute("""CREATE TEMPORARY TABLE bbox_way_nodes (id bigint) ON COMMIT DROP""")
@@ -365,16 +365,13 @@ class QueryError(Exception):
 
 def parse_xapi(predicate):
     query = []
-    query_objs = []
     groups = re.findall(r'(?:\[(.*?)\])', predicate)
-    for g in groups:
-        (left, right) = g.split('=')
+    for group in groups:
+        (left, right) = group.split('=')
         if left == '@uid':
-            query.append('uid = %s')
-            query_objs.append(int(right))
+            query.append(g.cursor.mogrify('uid = %s', [int(right)]))
         elif left == '@changeset':
-            query.append('changeset_id = %s')
-            query_objs.append(int(right))
+            query.append(g.cursor.mogrify('changeset_id = %s', [int(right)]))
         elif left == 'bbox':
             try:
                 (l, b, r, t) = parse_bbox(right)
@@ -394,29 +391,24 @@ def parse_xapi(predicate):
             if r < -180 or r > 180:
                 raise QueryError('Right is out of range.')
 
-            query.append('ST_Intersects(geom, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))')
-            query_objs.extend([l, b,
+            query.append(g.cursor.mogrify('ST_Intersects(geom, ST_GeometryFromText(\'POLYGON((%s %s, %s %s, %s %s, %s %s, %s %s))\', 4326))',
+                              [l, b,
                                l, t,
                                r, t,
                                r, b,
-                               l, b])
+                               l, b]))
         else:
             ors = []
-            orvs = []
             keys = left.split('|')
             vals = right.split('|')
             for (l,r) in itertools.product(keys, vals):
                 if r == '*':
-                    ors.append('(tags ? %s)')
-                    orvs.append(l)
+                    ors.append(g.cursor.mogrify('(tags ? %s)', [l]))
                 else:
-                    ors.append('(tags @> hstore(%s, %s))')
-                    orvs.append(l)
-                    orvs.append(r)
+                    ors.append(g.cursor.mogrify('(tags @> hstore(%s, %s))', [l, r]))
             query.append('(' + ' OR '.join(ors) + ')')
-            query_objs.extend(orvs)
     query_str = ' AND '.join(query)
-    return (query_str, query_objs)
+    return query_str
 
 def parse_bbox(bbox_str):
     return tuple(float(v) for v in bbox_str.split(','))
@@ -473,7 +465,7 @@ def nodes(ids):
         return Response('No IDs specified.', status=400)
 
     try:
-        query_nodes(g.cursor, 'id IN %s', (tuple(ids),))
+        query_nodes(g.cursor, g.cursor.mogrify('id IN %s', (tuple(ids),)))
 
         if g.cursor.rowcount < 1:
             g.cursor.close()
@@ -513,7 +505,7 @@ def ways(ids):
     try:
         query_nodes(g.cursor, 'FALSE')
 
-        query_ways(g.cursor, 'id IN %s', (tuple(ids),))
+        query_ways(g.cursor, g.cursor.mogrify('id IN %s', (tuple(ids),)))
 
         if g.cursor.rowcount < 1:
             g.cursor.close()
@@ -558,7 +550,7 @@ def relations(ids):
 
         query_ways(g.cursor, 'FALSE')
 
-        query_relations(g.cursor, 'id IN %s', (tuple(ids),))
+        query_relations(g.cursor, g.cursor.mogrify('id IN %s', (tuple(ids),)))
 
         if g.cursor.rowcount < 1:
             g.cursor.close()
@@ -588,7 +580,7 @@ def map():
         return Response('No bbox specified.', status=400)
 
     try:
-        (query_str, query_objs) = parse_xapi('[bbox=%s]' % bbox)
+        query_str = parse_xapi('[bbox=%s]' % bbox)
     except QueryError, e:
         g.cursor.close()
         return Response(e.message, status=400)
@@ -597,10 +589,10 @@ def map():
         return Response(e.message, status=400)
 
     try:
-        query_nodes(g.cursor, query_str, query_objs)
+        query_nodes(g.cursor, query_str)
         g.cursor.execute("""ALTER TABLE ONLY bbox_nodes ADD CONSTRAINT pk_bbox_nodes PRIMARY KEY (id)""")
 
-        query_ways(g.cursor, query_str.replace('geom', 'linestring'), query_objs)
+        query_ways(g.cursor, query_str.replace('geom', 'linestring'))
         g.cursor.execute("""ALTER TABLE ONLY bbox_ways ADD CONSTRAINT pk_bbox_ways PRIMARY KEY (id)""")
 
         backfill_relations(g.cursor)
@@ -623,7 +615,7 @@ def map():
 @app.route('/api/0.6/node<string:predicate>')
 def search_nodes(predicate):
     try:
-        (query_str, query_objs) = parse_xapi(predicate)
+        query_str = parse_xapi(predicate)
     except QueryError, e:
         g.cursor.close()
         return Response(e.message, status=400)
@@ -632,7 +624,7 @@ def search_nodes(predicate):
         return Response(e.message, status=400)
 
     try:
-        query_nodes(g.cursor, query_str, query_objs)
+        query_nodes(g.cursor, query_str)
 
         query_ways(g.cursor, 'FALSE')
 
@@ -650,7 +642,7 @@ def search_nodes(predicate):
 @app.route('/api/0.6/way<string:predicate>')
 def search_ways(predicate):
     try:
-        (query_str, query_objs) = parse_xapi(predicate)
+        query_str = parse_xapi(predicate)
     except QueryError, e:
         g.cursor.close()
         return Response(e.message, status=400)
@@ -661,7 +653,7 @@ def search_ways(predicate):
     try:
         query_nodes(g.cursor, 'FALSE')
 
-        query_ways(g.cursor, query_str.replace('geom', 'linestring'), query_objs)
+        query_ways(g.cursor, query_str.replace('geom', 'linestring'))
         backfill_way_nodes(g.cursor)
 
         query_relations(g.cursor, 'FALSE')
@@ -678,7 +670,7 @@ def search_ways(predicate):
 @app.route('/api/0.6/relation<string:predicate>')
 def search_relations(predicate):
     try:
-        (query_str, query_objs) = parse_xapi(predicate)
+        query_str = parse_xapi(predicate)
     except QueryError, e:
         g.cursor.close()
         return Response(e.message, status=400)
@@ -686,7 +678,7 @@ def search_relations(predicate):
         g.cursor.close()
         return Response(e.message, status=400)
 
-    query_relations(g.cursor, query_str, query_objs)
+    query_relations(g.cursor, query_str)
     query_nodes(g.cursor, 'FALSE')
     query_ways(g.cursor, 'FALSE')
 
@@ -698,7 +690,7 @@ def search_relations(predicate):
 @app.route('/api/0.6/*<string:predicate>')
 def search_primitives(predicate):
     try:
-        (query_str, query_objs) = parse_xapi(predicate)
+        query_str = parse_xapi(predicate)
     except QueryError, e:
         g.cursor.close()
         return Response(e.message, status=400)
@@ -707,9 +699,9 @@ def search_primitives(predicate):
         return Response(e.message, status=400)
 
     try:
-        query_nodes(g.cursor, query_str, query_objs)
+        query_nodes(g.cursor, query_str)
 
-        query_ways(g.cursor, query_str.replace('geom', 'linestring'), query_objs)
+        query_ways(g.cursor, query_str.replace('geom', 'linestring'))
         backfill_way_nodes(g.cursor)
 
         query_relations(g.cursor, 'FALSE')
