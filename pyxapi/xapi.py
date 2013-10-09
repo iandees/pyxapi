@@ -456,7 +456,7 @@ def capabilities():
     return Response(xml, mimetype='application/xml')
 
 def request_wants_json():
-    best = request.accept_mimetypes.best_match(['application/json', 'application/xml'])
+    best = request.accept_mimetypes.best_match(['application/xml', 'application/json'])
     return best == 'application/json' and \
            request.accept_mimetypes[best] >= request.accept_mimetypes['application/xml']
 
@@ -685,7 +685,7 @@ def search_relations(predicate):
     except ValueError, e:
         g.cursor.close()
         return Response(e.message, status=400)
-    
+
     query_relations(g.cursor, query_str, query_objs)
     query_nodes(g.cursor, 'FALSE')
     query_ways(g.cursor, 'FALSE')
